@@ -184,13 +184,14 @@ class CitationReference(object):
     """
 
     # Possible reference types
-    IBID = 1
-    ID = 2
-    SUPRA = 3
+    IBID = 1  # The exact same citation as the previous
+    ID = 2  # The same text as the previous citation, but different page
+    SUPRA = 3  # A text cited at some point above, but not directly previous
 
-    def __init__(self, reference_type, page_number=None):
+    def __init__(self, reference_type, page_number=None, antecedent=None):
         self.reference_type = reference_type
         self.page_number = page_number
+        self.antecedent = antecedent
 
 
 # Adapted from nltk Penn Treebank tokenizer
@@ -406,12 +407,29 @@ def extract_id_citation(words, id_index):
     # The page number is therefore two indices beyond the "Id." index
     page = add_page(words, id_index + 1)
 
-    return CitationReference(reference_type=CitationReference.ID,
-                            page_number=page)
+    return CitationReference(
+        reference_type=CitationReference.ID,
+        page_number=page
+    )
 
 
 def extract_supra_citation(words, supra_index):
-    return CitationReference(reference_type=CitationReference.SUPRA)
+    """Given a list of words and the index of a "supra" citation, look before
+    and after for the antecedent and the page number. If found, construct and
+    return a CitationReference object.
+    """
+    # Supra citations come in the form "Antecedent, supra, at 999"
+    # The page number is therefore two indices beyond the "supra" index
+    page = add_page(words, supra_index + 1)
+
+    # And the antecdent is therefore one index before the "supra" index
+    antecedent = strip_punct(words[supra_index - 1])
+
+    return CitationReference(
+        reference_type=CitationReference.SUPRA,
+        page_number=page,
+        antecedent=antecedent
+    )
 
 
 def is_date_in_reporter(editions, year):
