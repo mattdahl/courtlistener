@@ -397,6 +397,23 @@ def extract_base_citation(words, reporter_index):
                     reporter_index=reporter_index)
 
 
+def extract_id_citation(words, id_index):
+    """Given a list of words and the index of an "Id." citation, look after for
+    the referenced page number. If found, construct and return a
+    CitationReference object.
+    """
+    # Id. citations come in the form "Id., at 999"
+    # The page number is therefore two indices beyond the "Id." index
+    page = add_page(words, id_index + 1)
+
+    return CitationReference(reference_type=CitationReference.ID,
+                            page_number=page)
+
+
+def extract_supra_citation(words, supra_index):
+    return CitationReference(reference_type=CitationReference.SUPRA)
+
+
 def is_date_in_reporter(editions, year):
     """Checks whether a year falls within the range of 1 to n editions of a
     reporter
@@ -541,7 +558,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
     # Exclude first and last tokens when looking for reporters, because valid
     # citations must have a volume before and a page after the reporter.
     for i in xrange(1, len(words) - 1):
-        # Find reporter
+        # If the citation is to an actual reporter, extract it as usual
         if words[i] in (EDITIONS.keys() + VARIATIONS_ONLY.keys()):
             citation = extract_base_citation(words, i)
             if citation is None:
@@ -551,14 +568,21 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
                 add_post_citation(citation, words)
             if do_defendant:
                 add_defendant(citation, words)
-            citations.append(citation)
-        elif words[i].lower() in 'ibid.':
-            citations.append(CitationReference(CitationReference.IBID))
-        elif words[i].lower() in 'id.':
-             # TODO: preserve Id. page numbers
-            citations.append(CitationReference(CitationReference.ID))
-        elif words[i].lower() in 'supra.':
-            citations.append(CitationReference(CitationReference.SUPRA))
+
+        # Otherwise, if the citation is only a reference to a previous citation
+        # (e.g., "Ibid.", "Id.", or "supra.") then extract it differently
+        elif words[i].lower() == 'id.,':
+            citation = extract_id_citation(words, i)
+        elif words[i].lower() == 'ibid.':
+            citation = CitationReference(reference_type=CitationReference.IBID)
+        elif words[i].lower() == 'supra,':
+            citation = extract_supra_citation(words, i)
+
+        # The token is not a citation
+        else:
+            continue
+
+        citations.append(citation)
 
     if disambiguate:
         # Disambiguate or drop all the reporters
