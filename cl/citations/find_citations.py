@@ -433,6 +433,10 @@ def disambiguate_reporters(citations):
     """
     unambiguous_citations = []
     for citation in citations:
+        # Don't try to disambiguate references (i.e., "Ibid.", "Id.", etc.)
+        if type(citation) is CitationReference:
+            continue
+
         # Non-variant items (P.R.R., A.2d, Wash., etc.)
         if REPORTERS.get(EDITIONS.get(citation.reporter)) is not None:
             citation.canonical_reporter = EDITIONS[citation.reporter]
@@ -540,6 +544,13 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
             if do_defendant:
                 add_defendant(citation, words)
             citations.append(citation)
+        elif words[i].lower() in 'ibid.':
+            citations.append(CitationReference(CitationReference.IBID))
+        elif words[i].lower() in 'id.':
+             # TODO: preserve Id. page numbers
+            citations.append(CitationReference(CitationReference.ID))
+        elif words[i].lower() in 'supra.':
+            citations.append(CitationReference(CitationReference.SUPRA))
 
     if disambiguate:
         # Disambiguate or drop all the reporters
