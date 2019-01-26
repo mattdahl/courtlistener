@@ -184,14 +184,28 @@ class CitationReference(object):
     """
 
     # Possible reference types
-    IBID = 1  # The exact same citation as the previous
-    ID = 2  # The same text as the previous citation, but different page
-    SUPRA = 3  # A text cited at some point above, but not directly previous
+    IBID = 'IBID'  # The exact same citation as the previous
+    ID = 'ID'  # The same text as the previous citation, but different page
+    SUPRA = 'SUPRA'  # A text cited at some point above, but not directly above
 
     def __init__(self, reference_type, page_number=None, antecedent=None):
         self.reference_type = reference_type
         self.page_number = page_number
         self.antecedent = antecedent
+
+    def __repr__(self):
+        print_string = self.reference_type
+
+        if self.reference_type == self.ID:
+            print_string = '{} at {}'.format(print_string, self.page_number)
+        elif self.reference_type == self.SUPRA:
+            print_string = '{}, {} at {}'.format(
+                print_string,
+                self.antecedent,
+                self.page_number
+            )
+
+        return print_string.encode('utf-8')
 
 
 # Adapted from nltk Penn Treebank tokenizer
