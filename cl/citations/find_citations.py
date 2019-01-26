@@ -353,20 +353,7 @@ def add_defendant(citation, words):
                 words[start_index:citation.reporter_index - 1])
 
 
-def extract_base_citation(words, reporter_index):
-    """Construct and return a citation object from a list of "words"
-
-    Given a list of words and the index of a federal reporter, look before and
-    after for volume and page.  If found, construct and return a
-    Citation object.
-    """
-    volume = strip_punct(words[reporter_index - 1])
-    if volume.isdigit():
-        volume = int(volume)
-    else:
-        # No volume, therefore not a valid citation
-        return None
-
+def add_page(words, reporter_index):
     page = strip_punct(words[reporter_index + 1])
     if page.isdigit():
         # Most page numbers will be digits.
@@ -383,6 +370,27 @@ def extract_base_citation(words, reporter_index):
         else:
             # Not Roman, and not a weird connecticut page number.
             return None
+
+    return page
+
+
+def extract_base_citation(words, reporter_index):
+    """Construct and return a citation object from a list of "words"
+
+    Given a list of words and the index of a federal reporter, look before and
+    after for volume and page.  If found, construct and return a
+    Citation object.
+    """
+    volume = strip_punct(words[reporter_index - 1])
+    if volume.isdigit():
+        volume = int(volume)
+    else:
+        # No volume, therefore not a valid citation
+        return None
+
+    page = add_page(words, reporter_index)
+    if page is None:
+        return None
 
     reporter = words[reporter_index]
     return Citation(reporter, page, volume, reporter_found=reporter,
