@@ -178,6 +178,20 @@ class Citation(object):
         """Used to override the __eq__ function."""
         return self.fuzzy_hash() == other.fuzzy_hash()
 
+class CitationReference(object):
+    """Convenience class which represents a reference to another citation in a
+    document. I.e., a "Ibid.", "Id.", or "supra".
+    """
+
+    # Possible reference types
+    IBID = 1
+    ID = 2
+    SUPRA = 3
+
+    def __init__(self, reference_type, page_number=None):
+        self.reference_type = reference_type
+        self.page_number = page_number
+
 
 # Adapted from nltk Penn Treebank tokenizer
 def strip_punct(text):
