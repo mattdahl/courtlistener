@@ -492,6 +492,7 @@ def disambiguate_reporters(citations):
     for citation in citations:
         # Don't try to disambiguate references (i.e., "Ibid.", "Id.", etc.)
         if type(citation) is CitationReference:
+            unambiguous_citations.append(citation)
             continue
 
         # Non-variant items (P.R.R., A.2d, Wash., etc.)
@@ -617,11 +618,11 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         citations.append(citation)
 
     if disambiguate:
-        # Disambiguate or drop all the reporters
+        # Disambiguate each citation's reporter
         citations = disambiguate_reporters(citations)
 
     for citation in citations:
-        if not citation.court and is_scotus_reporter(citation):
+        if type(citation) is Citation and not citation.court and is_scotus_reporter(citation):
             citation.court = 'scotus'
 
     return citations
