@@ -419,8 +419,8 @@ def add_defendant(citation, words):
                 words[start_index:citation.reporter_index - 1])
 
 
-def add_page(words, reporter_index):
-    page = strip_punct(words[reporter_index + 1])
+def parse_page(page):
+    page = strip_punct(page)
     if page.isdigit():
         # Most page numbers will be digits.
         page = int(page)
@@ -454,7 +454,7 @@ def extract_base_citation(words, reporter_index):
         # No volume, therefore not a valid citation
         return None
 
-    page = add_page(words, reporter_index)
+    page = parse_page(words[reporter_index + 1])
     if page is None:
         return None
 
@@ -635,7 +635,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
             # If the reference is an "Id." reference, then the citation is to
             # the immediately previous document, but at a different page number
             r = citations[-1]
-            new_page = add_page(words, i + 1)
+            new_page = parse_page(words[i + 1])
 
             # Take that reference, change the page, and wrap it in a new object
             citation = IdCitation(r.reporter, new_page, r.volume,
@@ -648,7 +648,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
             # citations above. We won't be able to resolve this reference
             # until the previous citations are actually matched to opinions.
             antecedent = strip_punct(words[i - 1])
-            page = add_page(words, i + 1)
+            page = parse_page(words[i + 1])
 
             citation = SupraCitation(antecedent, page)
 
