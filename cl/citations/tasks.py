@@ -1,8 +1,10 @@
 import re
 from httplib import ResponseNotReady
+from collections import Counter
 
 from cl.celery import app
 from cl.citations import find_citations, match_citations
+from cl.citations.find_citations import SupraCitation
 from cl.search.models import Opinion, OpinionsCited
 
 # This is the distance two reporter abbreviations can be from each other if they
@@ -70,11 +72,15 @@ def create_cited_html(opinion, citations):
     if any([opinion.html_columbia, opinion.html_lawbox, opinion.html]):
         new_html = opinion.html_columbia or opinion.html_lawbox or opinion.html
         for citation in citations:
+            if not citation.as_regex():
+                continue
             new_html = re.sub(citation.as_regex(), citation.as_html(),
                               new_html)
     elif opinion.plain_text:
         inner_html = opinion.plain_text
         for citation in citations:
+            if not citation.as_regex():
+                continue
             repl = u'</pre>%s<pre class="inline">' % citation.as_html()
             inner_html = re.sub(citation.as_regex(), repl, inner_html)
         new_html = u'<pre class="inline">%s</pre>' % inner_html
@@ -87,47 +93,26 @@ def update_document(self, opinion, index=True):
     requested."""
     citations = get_document_citations(opinion)
 
-    # List used so we can do one simple update to the citing opinion.
-    opinions_cited = set()
-    for citation in citations:
-        try:
-            matches = match_citations.match_citation(
-                citation,
-                citing_doc=opinion
-            )
-        except ResponseNotReady as e:
-            # Threading problem in httplib, which is used in the Solr query.
-            raise self.retry(exc=e, countdown=2)
+    # First, match the naive Citation objects to actual Opinion objects
+    try:
+        citation_matches = get_citation_matches(opinion, citations)
+    except ResponseNotReady as e:
+        # Threading problem in httplib, which is used in the Solr query.
+        raise self.retry(exc=e, countdown=2)
 
-        # TODO: Figure out what to do if there's more than one
-        if len(matches) == 1:
-            match_id = matches[0]['id']
-            try:
-                matched_opinion = Opinion.objects.get(pk=match_id)
+    # Next, consolidate duplicate matches, keeping a counter of how often each
+    # match appears (so we know how many times an opinion cites another)
+    # keys = opinion
+    # values = number of time that opinion is cited
+    grouped_matches = Counter(citation_matches)
+    del grouped_matches[None]
 
-                # Increase citation count for matched cluster if it hasn't
-                # already been cited by this opinion.
-                if matched_opinion not in opinion.opinions_cited.all():
-                    matched_opinion.cluster.citation_count += 1
-                    matched_opinion.cluster.save(index=index)
-
-                # Add citation match to the citing opinion's list of cases it
-                # cites. opinions_cited is a set so duplicates aren't an issue
-                opinions_cited.add(matched_opinion.pk)
-
-                # URL field will be used for generating inline citation html
-                citation.match_url = matched_opinion.cluster.get_absolute_url()
-                citation.match_id = matched_opinion.pk
-            except Opinion.DoesNotExist:
-                # No Opinions returned. Press on.
-                continue
-            except Opinion.MultipleObjectsReturned:
-                # Multiple Opinions returned. Press on.
-                continue
-        else:
-            # No match found for citation
-            #create_stub([citation])
-            pass
+    for matched_opinion in grouped_matches:
+        # Increase citation count for matched cluster if it hasn't
+        # already been cited by this opinion.
+        if matched_opinion not in opinion.opinions_cited.all():
+            matched_opinion.cluster.citation_count += 1
+            matched_opinion.cluster.save(index=index)
 
     # Only update things if we found citations
     if citations:
@@ -138,14 +123,63 @@ def update_document(self, opinion, index=True):
 
         # Create the new ones.
         OpinionsCited.objects.bulk_create([
-            OpinionsCited(citing_opinion_id=opinion.pk,
-                          cited_opinion_id=pk) for
-            pk in opinions_cited
+            OpinionsCited(
+                citing_opinion_id=opinion.pk,
+                cited_opinion_id=matched_opinion.pk,
+                depth=grouped_matches[matched_opinion]
+            ) for matched_opinion in grouped_matches
         ])
 
     # Update Solr if requested. In some cases we do it at the end for
     # performance reasons.
     opinion.save(index=index)
+
+
+def get_citation_matches(opinion, citations):
+    # A list of opinions, as matched to citations
+    citation_matches = []
+
+    for i, citation in enumerate(citations):
+        # If the citation is a "supra" citation, try to resolve it to one of
+        # the citations that has already been matched
+        if isinstance(citation, SupraCitation):
+            for o in citation_matches[0:i]:
+                # The only data point for resolution that we have is the
+                # antecedent referenced by the "supra" citation. This is
+                # usually an abbreviated form of the plaintiff, so we compare
+                # that string to the case names of the already matched opinions.
+                if citation.plaintiff in o.cluster.case_name_full:
+                    # Just use the first one found, since we have no way
+                    # to make a principled choice between candidates.
+                    # If nothing is found, then the "supra" reference is
+                    # effectively dropped.
+                    matched_opinion = o
+                    break
+
+        # Otherwise, the citation is just a regular citation, so try to match
+        # it directly to an opinion
+        else:
+            matches = match_citations.match_citation(
+                citation,
+                citing_doc=opinion
+            )
+
+            if len(matches) == 1:
+                match_id = matches[0]['id']
+                try:
+                    matched_opinion = Opinion.objects.get(pk=match_id)
+                    citation_matches.append(matched_opinion)
+                except Opinion.DoesNotExist:
+                    # No Opinions returned. Press on.
+                    continue
+                except Opinion.MultipleObjectsReturned:
+                    # Multiple Opinions returned. Press on.
+                    continue
+            else:
+                # No match found for citation
+                continue
+
+    return citation_matches
 
 
 @app.task(ignore_result=True)
