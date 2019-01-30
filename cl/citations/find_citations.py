@@ -35,6 +35,7 @@ class Citation(object):
     """Convenience class which represents a single citation found in a
     document.
     """
+
     def __init__(self, reporter, page, volume, canonical_reporter=None,
                  lookup_index=None, extra=None, defendant=None, plaintiff=None,
                  court=None, year=None, match_url=None, match_id=None,
@@ -178,35 +179,85 @@ class Citation(object):
         """Used to override the __eq__ function."""
         return self.fuzzy_hash() == other.fuzzy_hash()
 
-class CitationReference(object):
-    """Convenience class which represents a reference to another citation in a
-    document. I.e., a "Ibid.", "Id.", or "supra".
+
+class SupraCitation(Citation):
+    """Convenience class which represents a 'supra' citation, i.e., a citation
+    to something that is above in the document.
     """
 
-    # Possible reference types
-    IBID = 'IBID'  # The exact same citation as the previous
-    ID = 'ID'  # The same text as the previous citation, but different page
-    SUPRA = 'SUPRA'  # A text cited at some point above, but not directly above
-
-    def __init__(self, reference_type, page_number=None, antecedent=None):
-        self.reference_type = reference_type
-        self.page_number = page_number
-        self.antecedent = antecedent
+    def __init__(self, antecedent, page):
+        # Inherit from a Citation object, but without knowledge of the reporter
+        # or the volume. Also assume that the antecedent is the plaintiff.
+        super(SupraCitation, self).__init__(None, page, None,
+                                            plaintiff=antecedent)
 
     def __repr__(self):
-        print_string = self.reference_type
+        return '{}, supra, at {}'.format(
+            self.plaintiff,
+            self.page
+        ).encode('utf-8')
 
-        if self.reference_type == self.ID:
-            print_string = '{} at {}'.format(print_string, self.page_number)
-        elif self.reference_type == self.SUPRA:
-            print_string = '{}, {} at {}'.format(
-                print_string,
-                self.antecedent,
-                self.page_number
-            )
+    def as_regex(self):
+        return r'{}, supra, at {}'.format(
+            self.plaintiff,
+            self.page
+        )
 
-        return print_string.encode('utf-8')
+    def as_html(self):
+        template = u'<span class="antecedent">{}</span>' + \
+                   u'<span>, supra, </span>' + \
+                   u'<span class="page">{}</span>'
+        inner_html = template.format(self.plaintiff, self.page)
+        span_class = "citation"
+        if self.match_url:
+            inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
+            data_attr = u' data-id="{}"'.format(self.match_id)
+        else:
+            span_class += " no-link"
+            data_attr = ''
+        return u'<span class="{}"{}>{}</span>'.format(
+            span_class,
+            data_attr,
+            inner_html
+        )
 
+
+class IbidCitation(Citation):
+    """Convenience class which represents an 'Ibid.' citation, i.e., a citation
+    to an immediately prior document.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Inherit from a Citation object.
+        super(IbidCitation, self).__init__(*args, **kwargs)
+
+    # Override these methods since we have no way to meaningfully construct
+    # a regex string to represent this kind of citation. (r'ibid.' would catch
+    # everything!)
+    def as_regex(self):
+        return None
+
+    def as_html(self):
+        return None
+
+
+class IdCitation(Citation):
+    """Convenience class which represents an 'Id.' citation, i.e., a citation
+    to an immediately prior document with a different page number.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Inherit from a Citation object.
+        super(IdCitation, self).__init__(*args, **kwargs)
+
+    # Override these methods since we have no way to meaningfully construct
+    # a regex string to represent this kind of citation. (r'id.' would catch
+    # everything!)
+    def as_regex(self):
+        return None
+
+    def as_html(self):
+        return None
 
 # Adapted from nltk Penn Treebank tokenizer
 def strip_punct(text):
@@ -412,40 +463,6 @@ def extract_base_citation(words, reporter_index):
                     reporter_index=reporter_index)
 
 
-def extract_id_citation(words, id_index):
-    """Given a list of words and the index of an "Id." citation, look after for
-    the referenced page number. If found, construct and return a
-    CitationReference object.
-    """
-    # Id. citations come in the form "Id., at 999"
-    # The page number is therefore two indices beyond the "Id." index
-    page = add_page(words, id_index + 1)
-
-    return CitationReference(
-        reference_type=CitationReference.ID,
-        page_number=page
-    )
-
-
-def extract_supra_citation(words, supra_index):
-    """Given a list of words and the index of a "supra" citation, look before
-    and after for the antecedent and the page number. If found, construct and
-    return a CitationReference object.
-    """
-    # Supra citations come in the form "Antecedent, supra, at 999"
-    # The page number is therefore two indices beyond the "supra" index
-    page = add_page(words, supra_index + 1)
-
-    # And the antecdent is therefore one index before the "supra" index
-    antecedent = strip_punct(words[supra_index - 1])
-
-    return CitationReference(
-        reference_type=CitationReference.SUPRA,
-        page_number=page,
-        antecedent=antecedent
-    )
-
-
 def is_date_in_reporter(editions, year):
     """Checks whether a year falls within the range of 1 to n editions of a
     reporter
@@ -490,13 +507,13 @@ def disambiguate_reporters(citations):
     """
     unambiguous_citations = []
     for citation in citations:
-        # Don't try to disambiguate references (i.e., "Ibid.", "Id.", etc.)
-        if type(citation) is CitationReference:
+        # Don't try to disambiguate "supra" citations, only real citations
+        if isinstance(citation, SupraCitation):
             unambiguous_citations.append(citation)
             continue
 
         # Non-variant items (P.R.R., A.2d, Wash., etc.)
-        if REPORTERS.get(EDITIONS.get(citation.reporter)) is not None:
+        elif REPORTERS.get(EDITIONS.get(citation.reporter)) is not None:
             citation.canonical_reporter = EDITIONS[citation.reporter]
             if len(REPORTERS[EDITIONS[citation.reporter]]) == 1:
                 # Single reporter, easy-peasy.
@@ -603,13 +620,37 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
                 add_defendant(citation, words)
 
         # Otherwise, if the citation is only a reference to a previous citation
-        # (e.g., "Ibid.", "Id.", or "supra.") then extract it differently
-        elif words[i].lower() == 'id.,':
-            citation = extract_id_citation(words, i)
+        # (e.g., "Ibid.", "Id.", or "supra,") then extract it differently
         elif words[i].lower() == 'ibid.':
-            citation = CitationReference(reference_type=CitationReference.IBID)
+            # If the reference is an "Ibid." reference, then the citation is
+            # simply to the immediately previous document
+            r = citations[-1]
+
+            # Take that reference and wrap it in a new object
+            citation = IbidCitation(r.reporter, r.page, r.volume,
+                                    extra=r.extra, defendant=r.defendant,
+                                    plaintiff=r.plaintiff, court=r.court,
+                                    year=r.year, reporter_index=i)
+        elif words[i].lower() == 'id.,':
+            # If the reference is an "Id." reference, then the citation is to
+            # the immediately previous document, but at a different page number
+            r = citations[-1]
+            new_page = add_page(words, i + 1)
+
+            # Take that reference, change the page, and wrap it in a new object
+            citation = IdCitation(r.reporter, new_page, r.volume,
+                                  extra=r.extra, defendant=r.defendant,
+                                  plaintiff=r.plaintiff, court=r.court,
+                                  year=r.year, reporter_index=i)
         elif words[i].lower() == 'supra,':
-            citation = extract_supra_citation(words, i)
+            # If the reference is an "supra" reference, then we're not sure
+            # yet what the citation is to. It could be to any of the previous
+            # citations above. We won't be able to resolve this reference
+            # until the previous citations are actually matched to opinions.
+            antecedent = strip_punct(words[i - 1])
+            page = add_page(words, i + 1)
+
+            citation = SupraCitation(antecedent, page)
 
         # The token is not a citation
         else:
@@ -622,7 +663,11 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         citations = disambiguate_reporters(citations)
 
     for citation in citations:
-        if type(citation) is Citation and not citation.court and is_scotus_reporter(citation):
+        if not citation.court and is_scotus_reporter(citation):
             citation.court = 'scotus'
 
+    # Returns a list of citations ordered in the sequence that they appear in
+    # the document. The ordering of this list is important because we will
+    # later rely on that order to reconstruct the antecedents of the
+    # SupraCitation objects.
     return citations
