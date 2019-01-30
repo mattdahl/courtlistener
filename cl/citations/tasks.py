@@ -143,17 +143,17 @@ def get_citation_matches(opinion, citations):
         # If the citation is a "supra" citation, try to resolve it to one of
         # the citations that has already been matched
         if isinstance(citation, SupraCitation):
-            for o in citation_matches[0:i]:
+            for op in citation_matches[0:i]:
                 # The only data point for resolution that we have is the
                 # antecedent referenced by the "supra" citation. This is
                 # usually an abbreviated form of the plaintiff, so we compare
                 # that string to the case names of the already matched opinions.
-                if citation.plaintiff in o.cluster.case_name_full:
+                if citation.plaintiff in op.cluster.case_name_full:
                     # Just use the first one found, since we have no way
                     # to make a principled choice between candidates.
                     # If nothing is found, then the "supra" reference is
                     # effectively dropped.
-                    matched_opinion = o
+                    citation_matches.append(op)
                     break
 
         # Otherwise, the citation is just a regular citation, so try to match
@@ -169,6 +169,11 @@ def get_citation_matches(opinion, citations):
                 try:
                     matched_opinion = Opinion.objects.get(pk=match_id)
                     citation_matches.append(matched_opinion)
+
+                    # Set the match fields on the original citation object
+                    # so that they can later be used for generating inline html
+                    citation.match_url = matched_opinion.cluster.get_absolute_url()
+                    citation.match_id = matched_opinion.pk
                 except Opinion.DoesNotExist:
                     # No Opinions returned. Press on.
                     continue
