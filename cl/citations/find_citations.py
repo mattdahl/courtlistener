@@ -185,11 +185,11 @@ class SupraCitation(Citation):
     to something that is above in the document.
     """
 
-    def __init__(self, antecedent, page):
-        # Inherit from a Citation object, but without knowledge of the reporter
-        # or the volume. Also assume that the antecedent is the plaintiff.
+    def __init__(self, antecedent_guess, page):
+        # Inherits from a Citation object, but without knowledge of the reporter
+        # or the volume. Assumes that the antecedent is the plaintiff.
         super(SupraCitation, self).__init__(None, page, None,
-                                            plaintiff=antecedent)
+                                            plaintiff=antecedent_guess)
 
     def __repr__(self):
         return '{}, supra, at {}'.format(
@@ -228,10 +228,10 @@ class IbidCitation(Citation):
     """
 
     def __init__(self, *args, **kwargs):
-        # Inherit from a Citation object.
+        # Inherits from a Citation object.
         super(IbidCitation, self).__init__(*args, **kwargs)
 
-    # Override these methods since we have no way to meaningfully construct
+    # Overrides these methods since there's no way to meaningfully construct
     # a regex string to represent this kind of citation. (r'ibid.' would catch
     # everything!)
     def as_regex(self):
@@ -247,10 +247,10 @@ class IdCitation(Citation):
     """
 
     def __init__(self, *args, **kwargs):
-        # Inherit from a Citation object.
+        # Inherits from a Citation object.
         super(IdCitation, self).__init__(*args, **kwargs)
 
-    # Override these methods since we have no way to meaningfully construct
+    # Override these methods since there is no way to meaningfully construct
     # a regex string to represent this kind of citation. (r'id.' would catch
     # everything!)
     def as_regex(self):
@@ -484,12 +484,12 @@ def extract_implicit_supra_citation(words, reporter_index):
         # No page, therefore not a valid citation
         return None
 
-    antecedent = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
-    if not antecedent:
+    antecedent_guess = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
+    if not antecedent_guess:
         # No antecedent, therefore not a valid citation
         return None
 
-    return SupraCitation(antecedent, page)
+    return SupraCitation(antecedent_guess, page)
 
 
 def is_date_in_reporter(editions, year):
@@ -682,14 +682,14 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
                                   year=r.year, reporter_index=i)
 
         # CASE 4: Citation token is a "supra" reference.
-        # In this case, we're not sure yet what the citation's antecdent is.
+        # In this case, we're not sure yet what the citation's antecedent is.
         # It could be any of the previous citations above. We won't be able to
         # resolve this reference until the previous citations are actually
         # matched to opinions.
         elif citation_token.lower() == 'supra,':
-            antecedent = strip_punct(words[i - 1])
+            antecedent_guess = strip_punct(words[i - 1])
             page = parse_page(words[i + 2])
-            citation = SupraCitation(antecedent, page)
+            citation = SupraCitation(antecedent_guess, page)
 
         # CASE 5: The token is not a citation.
         else:
