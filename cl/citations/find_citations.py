@@ -428,24 +428,22 @@ def parse_page(page):
         if isroman(page):
             # Some places like Nebraska have Roman numerals, e.g. in
             # '250 Neb. xxiv (1996)'. No processing needed.
-            pass
-        elif re.match('\d{1,6}[-]?[a-zA-Z]{1,6}', page):
+            page = page.encode('utf-8')
+        elif re.match(r"\d{1,6}[-]?[a-zA-Z]{1,6}", page):
             # Some places, like Connecticut, have pages like "13301-M".
             # Other places, like Illinois have "pages" like "110311-B".
-            pass
+            page = page.encode('utf-8')
         else:
             # Not Roman, and not a weird connecticut page number.
-            return None
+            page = None
 
     return page
 
 
-def extract_base_citation(words, reporter_index):
-    """Construct and return a citation object from a list of "words"
-
-    Given a list of words and the index of a federal reporter, look before and
-    after for volume and page.  If found, construct and return a
-    Citation object.
+def extract_standard_citation(words, reporter_index):
+    """Given a list of words and the index of a federal reporter, look before
+    and after for volume and page. If found, construct and return a Citation
+    object.
     """
     volume = strip_punct(words[reporter_index - 1])
     if volume.isdigit():
@@ -455,12 +453,43 @@ def extract_base_citation(words, reporter_index):
         return None
 
     page = parse_page(words[reporter_index + 1])
-    if page is None:
+    if not page:
         return None
 
     reporter = words[reporter_index]
+
     return Citation(reporter, page, volume, reporter_found=reporter,
                     reporter_index=reporter_index)
+
+
+def extract_implicit_supra_citation(words, reporter_index):
+    """Given a list of words and the index of a federal reporter, look before
+    and after to see if this is an implicit supra citation. If found, construct
+    and return a SupraCitation object.
+
+    Standard citation: "Adarand Constructors, Inc. v. Peña, 515 U.S. 200, 240"
+    Implicit supra citation: "Adarand, 515 U.S., at 227"
+    """
+
+    volume = strip_punct(words[reporter_index - 1])
+
+    if volume.isdigit():
+        volume = int(volume)
+    else:
+        # No volume, therefore not a valid citation
+        return None
+
+    page = parse_page(words[reporter_index + 3])
+    if not page:
+        # No page, therefore not a valid citation
+        return None
+
+    antecedent = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
+    if not antecedent:
+        # No antecedent, therefore not a valid citation
+        return None
+
+    return SupraCitation(antecedent, page)
 
 
 def is_date_in_reporter(editions, year):
@@ -605,54 +634,64 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         text = get_visible_text(text)
     words = reporter_tokenizer.tokenize(text)
     citations = []
+
     # Exclude first and last tokens when looking for reporters, because valid
     # citations must have a volume before and a page after the reporter.
     for i in xrange(1, len(words) - 1):
-        # If the citation is to an actual reporter, extract it as usual
-        if words[i] in (EDITIONS.keys() + VARIATIONS_ONLY.keys()):
-            citation = extract_base_citation(words, i)
-            if citation is None:
-                # Not a valid citation; continue looking
-                continue
-            if do_post_citation:
-                add_post_citation(citation, words)
-            if do_defendant:
-                add_defendant(citation, words)
+        citation_token = words[i]
 
-        # Otherwise, if the citation is only a reference to a previous citation
-        # (e.g., "Ibid.", "Id.", or "supra,") then extract it differently
-        elif words[i].lower() == 'ibid.':
-            # If the reference is an "Ibid." reference, then the citation is
-            # simply to the immediately previous document
+        # CASE 1: Citation token is a reporter (e.g., "U. S.").
+        # In this case, first try extracting it as a standard, full citation,
+        # and if that fails try extracting it as an implicit "supra" citation.
+        if citation_token in (EDITIONS.keys() + VARIATIONS_ONLY.keys()):
+            citation = extract_standard_citation(words, i)
+            if citation:
+                # Standard citation found, try to add additional data
+                if do_post_citation:
+                    add_post_citation(citation, words)
+                if do_defendant:
+                    add_defendant(citation, words)
+            else:
+                # Standard citation not found, so see if this reference to a
+                # reporter is an implicit "supra" citation instead
+                citation = extract_implicit_supra_citation(words, i)
+
+                if not citation:
+                    # Neither form of this citation is valid
+                    continue
+
+        # CASE 2: Citation token is an "Ibid." reference.
+        # In this case, the citation is simply to the immediately previous
+        # document.
+        elif citation_token.lower() == 'ibid.':
             r = citations[-1]
-
-            # Take that reference and wrap it in a new object
             citation = IbidCitation(r.reporter, r.page, r.volume,
                                     extra=r.extra, defendant=r.defendant,
                                     plaintiff=r.plaintiff, court=r.court,
                                     year=r.year, reporter_index=i)
-        elif words[i].lower() == 'id.,':
-            # If the reference is an "Id." reference, then the citation is to
-            # the immediately previous document, but at a different page number
-            r = citations[-1]
-            new_page = parse_page(words[i + 1])
 
-            # Take that reference, change the page, and wrap it in a new object
+        # CASE 3: Citation token is an "Id." reference.
+        # In this case, the citation is to the immediately previous
+        # document, but at a different page number.
+        elif citation_token.lower() == 'id.,':
+            r = citations[-1]
+            new_page = parse_page(words[i + 2])
             citation = IdCitation(r.reporter, new_page, r.volume,
                                   extra=r.extra, defendant=r.defendant,
                                   plaintiff=r.plaintiff, court=r.court,
                                   year=r.year, reporter_index=i)
-        elif words[i].lower() == 'supra,':
-            # If the reference is an "supra" reference, then we're not sure
-            # yet what the citation is to. It could be to any of the previous
-            # citations above. We won't be able to resolve this reference
-            # until the previous citations are actually matched to opinions.
-            antecedent = strip_punct(words[i - 1])
-            page = parse_page(words[i + 1])
 
+        # CASE 4: Citation token is a "supra" reference.
+        # In this case, we're not sure yet what the citation's antecdent is.
+        # It could be any of the previous citations above. We won't be able to
+        # resolve this reference until the previous citations are actually
+        # matched to opinions.
+        elif citation_token.lower() == 'supra,':
+            antecedent = strip_punct(words[i - 1])
+            page = parse_page(words[i + 2])
             citation = SupraCitation(antecedent, page)
 
-        # The token is not a citation
+        # CASE 5: The token is not a citation.
         else:
             continue
 
