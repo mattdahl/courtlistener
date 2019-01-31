@@ -144,10 +144,11 @@ def get_citation_matches(opinion, citations):
         # the citations that has already been matched
         if isinstance(citation, SupraCitation):
             for op in citation_matches[0:i]:
-                # The only data point for resolution that we have is the
-                # antecedent referenced by the "supra" citation. This is
-                # usually an abbreviated form of the plaintiff, so we compare
-                # that string to the case names of the already matched opinions.
+                # The only data point for resolution that we have is the guess
+                # at what the "supra" citation's antecedent is. This is usually
+                # an abbreviated form of the plaintiff, so that guess is stored
+                # in that field and we compare it to the known case names of
+                # the already matched opinions.
                 if citation.plaintiff in op.cluster.case_name_full:
                     # Just use the first one found, since we have no way
                     # to make a principled choice between candidates.
