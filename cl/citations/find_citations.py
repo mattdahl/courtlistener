@@ -680,34 +680,15 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         # In this case, the citation is simply to the immediately previous
         # document. We resolve these citations on-the-spot.
         elif citation_token.lower() == 'ibid.':
-            r = citations[-1]
-            if isinstance(r, FullCitation):
-                citation = FullCitation(r.reporter, r.page, r.volume,
-                                        extra=r.extra, defendant=r.defendant,
-                                        plaintiff=r.plaintiff, court=r.court,
-                                        year=r.year, reporter_index=i)
-            elif isinstance(r, ShortformCitation):
-                citation = ShortformCitation(r. reporter, r.page, r.volume,
-                                             antecedent_guess=r.antecedent_guess)
-            elif isinstance(r, SupraCitation):
-                citation = SupraCitation(r.antecedent_guess, r.page)
+            citation = citations[-1]
 
         # CASE 3: Citation token is an "Id." reference.
         # In this case, the citation is to the immediately previous
-        # document, but at a different page number.
+        # document, but at a different page number. However, since this page
+        # number will not help us resolve this citation, we can just discard
+        # it and simply take the previous citation, as in an Ibid. reference.
         elif citation_token.lower() == 'id.,':
-            r = citations[-1]
-            new_page = parse_page(words[i + 2])
-            if isinstance(r, FullCitation):
-                citation = FullCitation(r.reporter, new_page, r.volume,
-                                        extra=r.extra, defendant=r.defendant,
-                                        plaintiff=r.plaintiff, court=r.court,
-                                        year=r.year, reporter_index=i)
-            elif isinstance(r, ShortformCitation):
-                citation = ShortformCitation(r. reporter, new_page, r.volume,
-                                             antecedent_guess=r.antecedent_guess)
-            elif isinstance(r, SupraCitation):
-                citation = SupraCitation(r.antecedent_guess, new_page)
+            citation = citations[-1]
 
         # CASE 4: Citation token is a "supra" reference.
         # In this case, we're not sure yet what the citation's antecedent is.
