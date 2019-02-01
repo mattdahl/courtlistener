@@ -202,10 +202,13 @@ class ShortformCitation(Citation):
     Example 2: 515 U.S., at 241
     """
 
-    def __init__(self, reporter, page, volume, antecedent_guess=None):
-        # Like a Citation object, but we have to guess who the plaintiff is
-        # based on the given antecedent, if there even is one.
-        super(ShortformCitation, self).__init__(reporter, page, volume)
+    def __init__(self, reporter, page, volume, antecedent_guess=None,
+                 reporter_found=None, reporter_index=None):
+        # Like a Citation object, but we have to guess who the antecedent is,
+        # if there even is one.
+        super(ShortformCitation, self).__init__(reporter, page, volume,
+                                                reporter_found=reporter_found,
+                                                reporter_index=reporter_index)
 
         self.antecedent_guess = antecedent_guess
 
@@ -222,12 +225,31 @@ class ShortformCitation(Citation):
         return base
 
     def as_regex(self):
-        # TODO
-        return None
+        base = r"{}\s+{},\ at\ {}".format(
+            self.volume,
+            re.escape(self.reporter_found),
+            self.page
+        )
+
+        return base
 
     def as_html(self):
-        # TODO
-        return None
+        template = u'<span class="volume">{}</span> ' + \
+                   u'<span class="reporter">{}</span>, at ' + \
+                   u'<span class="page">{}</span>'
+        inner_html = template.format(self.volume, self.reporter_found, self.page)
+        span_class = "citation"
+        if self.match_url:
+            inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
+            data_attr = u' data-id="{}"'.format(self.match_id)
+        else:
+            span_class += " no-link"
+            data_attr = ''
+        return u'<span class="{}"{}>{}</span>'.format(
+            span_class,
+            data_attr,
+            inner_html
+        )
 
 
 class SupraCitation(Citation):
@@ -501,11 +523,18 @@ def extract_shortform_citation(words, reporter_index):
         # No page, therefore not a valid citation
         return None
 
+    reporter = words[reporter_index]
+
     antecedent_guess = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
     if antecedent_guess:
-        return ShortformCitation(words[reporter_index], page, volume, antecedent_guess)
+        return ShortformCitation(reporter, page, volume,
+                                 antecedent_guess=antecedent_guess,
+                                 reporter_found=reporter,
+                                 reporter_index=reporter_index)
     else:
-        return ShortformCitation(words[reporter_index], page, volume)
+        return ShortformCitation(reporter, page, volume,
+                                 reporter_found=reporter,
+                                 reporter_index=reporter_index)
 
 
 def is_date_in_reporter(editions, year):

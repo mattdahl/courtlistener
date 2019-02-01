@@ -4,7 +4,7 @@ from collections import Counter
 
 from cl.celery import app
 from cl.citations import find_citations, match_citations
-from cl.citations.find_citations import SupraCitation
+from cl.citations.find_citations import SupraCitation, ShortformCitation
 from cl.search.models import Opinion, OpinionsCited
 
 # This is the distance two reporter abbreviations can be from each other if they
@@ -72,15 +72,11 @@ def create_cited_html(opinion, citations):
     if any([opinion.html_columbia, opinion.html_lawbox, opinion.html]):
         new_html = opinion.html_columbia or opinion.html_lawbox or opinion.html
         for citation in citations:
-            if not citation.as_regex():
-                continue
             new_html = re.sub(citation.as_regex(), citation.as_html(),
                               new_html)
     elif opinion.plain_text:
         inner_html = opinion.plain_text
         for citation in citations:
-            if not citation.as_regex():
-                continue
             repl = u'</pre>%s<pre class="inline">' % citation.as_html()
             inner_html = re.sub(citation.as_regex(), repl, inner_html)
         new_html = u'<pre class="inline">%s</pre>' % inner_html
@@ -105,7 +101,6 @@ def update_document(self, opinion, index=True):
     # keys = opinion
     # values = number of time that opinion is cited
     grouped_matches = Counter(citation_matches)
-    del grouped_matches[None]
 
     for matched_opinion in grouped_matches:
         # Increase citation count for matched cluster if it hasn't
@@ -140,22 +135,45 @@ def get_citation_matches(opinion, citations):
     citation_matches = []
 
     for i, citation in enumerate(citations):
-        # If the citation is a "supra" citation, try to resolve it to one of
+        matched_opinion = None
+
+        # If the citation is a supra citation, try to resolve it to one of
         # the citations that has already been matched
         if isinstance(citation, SupraCitation):
-            for op in citation_matches[0:i]:
+            for op in citation_matches:
                 # The only data point for resolution that we have is the guess
                 # at what the "supra" citation's antecedent is. This is usually
                 # an abbreviated form of the plaintiff, so that guess is stored
                 # in that field and we compare it to the known case names of
                 # the already matched opinions.
                 if citation.antecedent_guess in op.cluster.case_name_full:
-                    # Just use the first one found, since we have no way
-                    # to make a principled choice between candidates.
-                    # If nothing is found, then the "supra" reference is
-                    # effectively dropped.
-                    citation_matches.append(op)
+                    # Just use the first one found, since the candidates should
+                    # all be identical. If nothing is found, then the supra
+                    # reference is effectively dropped.
+                    matched_opinion = op
                     break
+
+        # Likewise, if the citation is a short form citation, try to resolve it
+        # to one of the citations that has already been matched
+        elif isinstance(citation, ShortformCitation):
+            # This time, we can try to match either by using the antecedent
+            # guess (if available; not all short form citations include a
+            # guess) or the reporter and volume number (as a crude backup).
+            # Because the latter matches may not be unique, only accept the
+            # match if there is a single, non-duplicate candidate.
+            if citation.antecedent_guess:
+                for op in citation_matches:
+                    if citation.antecedent_guess in op.cluster.case_name_full:
+                        matched_opinion = op
+                        break
+            else:
+                candidates = []
+                for op in citation_matches:
+                    for c in op.cluster.citations.all():
+                        if citation.reporter == c.reporter and citation.volume == c.volume:
+                            candidates.append(op)
+                if len(set(candidates)) == 1:
+                    matched_opinion = candidates[0]
 
         # Otherwise, the citation is just a regular citation, so try to match
         # it directly to an opinion
@@ -169,12 +187,6 @@ def get_citation_matches(opinion, citations):
                 match_id = matches[0]['id']
                 try:
                     matched_opinion = Opinion.objects.get(pk=match_id)
-                    citation_matches.append(matched_opinion)
-
-                    # Set the match fields on the original citation object
-                    # so that they can later be used for generating inline html
-                    citation.match_url = matched_opinion.cluster.get_absolute_url()
-                    citation.match_id = matched_opinion.pk
                 except Opinion.DoesNotExist:
                     # No Opinions returned. Press on.
                     continue
@@ -184,6 +196,14 @@ def get_citation_matches(opinion, citations):
             else:
                 # No match found for citation
                 continue
+
+        # If an opinion was successfully matched, add it to the list and
+        # set the match fields on the original citation object so that they
+        # can later be used for generating inline html
+        if matched_opinion:
+            citation_matches.append(matched_opinion)
+            citation.match_url = matched_opinion.cluster.get_absolute_url()
+            citation.match_id = matched_opinion.pk
 
     return citation_matches
 
