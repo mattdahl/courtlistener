@@ -180,26 +180,78 @@ class Citation(object):
         return self.fuzzy_hash() == other.fuzzy_hash()
 
 
+class FullCitation(Citation):
+    """Convenience class which represents a standard, fully named citation,
+    i.e., the kind of citation that marks the first time a document is cited.
+    This kind of citation can be easily matched to an opinion in our database.
+    Example: Adarand Constructors, Inc. v. Peña, 515 U.S. 200, 240
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Fully implements the standard Citation object.
+        super(FullCitation, self).__init__(*args, **kwargs)
+
+
+class ShortformCitation(Citation):
+    """Convenience class which represents a short form citation, i.e., the kind
+    of citation made after a full citation has already appeared. These
+    citations come in two forms. And because they lack the full case name and
+    might have a different page number than the canonical citation, matching
+    them to an opinion directly is difficult.
+    Example 1: Adarand, 515 U.S., at 241
+    Example 2: 515 U.S., at 241
+    """
+
+    def __init__(self, reporter, page, volume, antecedent_guess=None):
+        # Like a Citation object, but we have to guess who the plaintiff is
+        # based on the given antecedent, if there even is one.
+        super(ShortformCitation, self).__init__(reporter, page, volume)
+
+        self.antecedent_guess = antecedent_guess
+
+    def __repr__(self):
+        base = '{} {}, at {}'.format(
+            self.volume,
+            self.reporter,
+            self.page
+        ).encode('utf-8')
+
+        if self.antecedent_guess:
+            base = self.antecedent_guess + ', ' + base
+
+        return base
+
+    def as_regex(self):
+        # TODO
+        return None
+
+    def as_html(self):
+        # TODO
+        return None
+
+
 class SupraCitation(Citation):
     """Convenience class which represents a 'supra' citation, i.e., a citation
     to something that is above in the document.
+    Example: Adarand, supra, 237
     """
 
     def __init__(self, antecedent_guess, page):
-        # Inherits from a Citation object, but without knowledge of the reporter
-        # or the volume. Assumes that the antecedent is the plaintiff.
-        super(SupraCitation, self).__init__(None, page, None,
-                                            plaintiff=antecedent_guess)
+        # Like a Citation object, but without knowledge of the reporter or the
+        # volume. Only has a guess at what the antecedent is.
+        super(SupraCitation, self).__init__(None, page, None)
+
+        self.antecedent_guess = antecedent_guess
 
     def __repr__(self):
         return '{}, supra, at {}'.format(
-            self.plaintiff,
+            self.antecedent_guess,
             self.page
         ).encode('utf-8')
 
     def as_regex(self):
         return r'{}, supra, at {}'.format(
-            self.plaintiff,
+            self.antecedent_guess,
             self.page
         )
 
@@ -207,7 +259,7 @@ class SupraCitation(Citation):
         template = u'<span class="antecedent">{}</span>' + \
                    u'<span>, supra, </span>' + \
                    u'<span class="page">{}</span>'
-        inner_html = template.format(self.plaintiff, self.page)
+        inner_html = template.format(self.antecedent_guess, self.page)
         span_class = "citation"
         if self.match_url:
             inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
@@ -221,43 +273,6 @@ class SupraCitation(Citation):
             inner_html
         )
 
-
-class IbidCitation(Citation):
-    """Convenience class which represents an 'Ibid.' citation, i.e., a citation
-    to an immediately prior document.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Inherits from a Citation object.
-        super(IbidCitation, self).__init__(*args, **kwargs)
-
-    # Overrides these methods since there's no way to meaningfully construct
-    # a regex string to represent this kind of citation. (r'ibid.' would catch
-    # everything!)
-    def as_regex(self):
-        return None
-
-    def as_html(self):
-        return None
-
-
-class IdCitation(Citation):
-    """Convenience class which represents an 'Id.' citation, i.e., a citation
-    to an immediately prior document with a different page number.
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Inherits from a Citation object.
-        super(IdCitation, self).__init__(*args, **kwargs)
-
-    # Override these methods since there is no way to meaningfully construct
-    # a regex string to represent this kind of citation. (r'id.' would catch
-    # everything!)
-    def as_regex(self):
-        return None
-
-    def as_html(self):
-        return None
 
 # Adapted from nltk Penn Treebank tokenizer
 def strip_punct(text):
@@ -440,10 +455,12 @@ def parse_page(page):
     return page
 
 
-def extract_standard_citation(words, reporter_index):
+def extract_full_citation(words, reporter_index):
     """Given a list of words and the index of a federal reporter, look before
     and after for volume and page. If found, construct and return a Citation
     object.
+
+    Full citation: Adarand Constructors, Inc. v. Peña, 515 U.S. 200, 240
     """
     volume = strip_punct(words[reporter_index - 1])
     if volume.isdigit():
@@ -458,17 +475,17 @@ def extract_standard_citation(words, reporter_index):
 
     reporter = words[reporter_index]
 
-    return Citation(reporter, page, volume, reporter_found=reporter,
-                    reporter_index=reporter_index)
+    return FullCitation(reporter, page, volume, reporter_found=reporter,
+                        reporter_index=reporter_index)
 
 
-def extract_implicit_supra_citation(words, reporter_index):
+def extract_shortform_citation(words, reporter_index):
     """Given a list of words and the index of a federal reporter, look before
-    and after to see if this is an implicit supra citation. If found, construct
-    and return a SupraCitation object.
+    and after to see if this is a shortform citation. If found, construct
+    and return a ShortformCitation object.
 
-    Standard citation: "Adarand Constructors, Inc. v. Peña, 515 U.S. 200, 240"
-    Implicit supra citation: "Adarand, 515 U.S., at 227"
+    Shortform 1: Adarand, 515 U.S., at 241
+    Shortform 2: 515 U.S., at 241
     """
 
     volume = strip_punct(words[reporter_index - 1])
@@ -485,11 +502,10 @@ def extract_implicit_supra_citation(words, reporter_index):
         return None
 
     antecedent_guess = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
-    if not antecedent_guess:
-        # No antecedent, therefore not a valid citation
-        return None
-
-    return SupraCitation(antecedent_guess, page)
+    if antecedent_guess:
+        return ShortformCitation(words[reporter_index], page, volume, antecedent_guess)
+    else:
+        return ShortformCitation(words[reporter_index], page, volume)
 
 
 def is_date_in_reporter(editions, year):
@@ -536,7 +552,7 @@ def disambiguate_reporters(citations):
     """
     unambiguous_citations = []
     for citation in citations:
-        # Don't try to disambiguate "supra" citations, only real citations
+        # Don't try to disambiguate "supra" citations, only citations with a reporter
         if isinstance(citation, SupraCitation):
             unambiguous_citations.append(citation)
             continue
@@ -642,33 +658,39 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
 
         # CASE 1: Citation token is a reporter (e.g., "U. S.").
         # In this case, first try extracting it as a standard, full citation,
-        # and if that fails try extracting it as an implicit "supra" citation.
+        # and if that fails try extracting it as a short form citation.
         if citation_token in (EDITIONS.keys() + VARIATIONS_ONLY.keys()):
-            citation = extract_standard_citation(words, i)
+            citation = extract_full_citation(words, i)
             if citation:
-                # Standard citation found, try to add additional data
+                # CASE 1A: Standard citation found, try to add additional data
                 if do_post_citation:
                     add_post_citation(citation, words)
                 if do_defendant:
                     add_defendant(citation, words)
             else:
-                # Standard citation not found, so see if this reference to a
-                # reporter is an implicit "supra" citation instead
-                citation = extract_implicit_supra_citation(words, i)
+                # CASE 1B: Standard citation not found, so see if this
+                # reference to a reporter is a short form citation instead
+                citation = extract_shortform_citation(words, i)
 
                 if not citation:
-                    # Neither form of this citation is valid
+                    # Neither a full nor short form citation
                     continue
 
         # CASE 2: Citation token is an "Ibid." reference.
         # In this case, the citation is simply to the immediately previous
-        # document.
+        # document. We resolve these citations on-the-spot.
         elif citation_token.lower() == 'ibid.':
             r = citations[-1]
-            citation = IbidCitation(r.reporter, r.page, r.volume,
-                                    extra=r.extra, defendant=r.defendant,
-                                    plaintiff=r.plaintiff, court=r.court,
-                                    year=r.year, reporter_index=i)
+            if isinstance(r, FullCitation):
+                citation = FullCitation(r.reporter, r.page, r.volume,
+                                        extra=r.extra, defendant=r.defendant,
+                                        plaintiff=r.plaintiff, court=r.court,
+                                        year=r.year, reporter_index=i)
+            elif isinstance(r, ShortformCitation):
+                citation = ShortformCitation(r. reporter, r.page, r.volume,
+                                             antecedent_guess=r.antecedent_guess)
+            elif isinstance(r, SupraCitation):
+                citation = SupraCitation(r.antecedent_guess, r.page)
 
         # CASE 3: Citation token is an "Id." reference.
         # In this case, the citation is to the immediately previous
@@ -676,10 +698,16 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         elif citation_token.lower() == 'id.,':
             r = citations[-1]
             new_page = parse_page(words[i + 2])
-            citation = IdCitation(r.reporter, new_page, r.volume,
-                                  extra=r.extra, defendant=r.defendant,
-                                  plaintiff=r.plaintiff, court=r.court,
-                                  year=r.year, reporter_index=i)
+            if isinstance(r, FullCitation):
+                citation = FullCitation(r.reporter, new_page, r.volume,
+                                        extra=r.extra, defendant=r.defendant,
+                                        plaintiff=r.plaintiff, court=r.court,
+                                        year=r.year, reporter_index=i)
+            elif isinstance(r, ShortformCitation):
+                citation = ShortformCitation(r. reporter, new_page, r.volume,
+                                             antecedent_guess=r.antecedent_guess)
+            elif isinstance(r, SupraCitation):
+                citation = SupraCitation(r.antecedent_guess, new_page)
 
         # CASE 4: Citation token is a "supra" reference.
         # In this case, we're not sure yet what the citation's antecedent is.

@@ -149,7 +149,7 @@ def get_citation_matches(opinion, citations):
                 # an abbreviated form of the plaintiff, so that guess is stored
                 # in that field and we compare it to the known case names of
                 # the already matched opinions.
-                if citation.plaintiff in op.cluster.case_name_full:
+                if citation.antecedent_guess in op.cluster.case_name_full:
                     # Just use the first one found, since we have no way
                     # to make a principled choice between candidates.
                     # If nothing is found, then the "supra" reference is
