@@ -6,8 +6,9 @@ from datetime import date, datetime
 from django.conf import settings
 from reporters_db import REPORTERS
 
-from cl.citations.find_citations import strip_punct
+from cl.citations.find_citations import strip_punct, SupraCitation, ShortformCitation
 from cl.lib import sunburnt
+from cl.search.models import Opinion
 
 DEBUG = True
 
@@ -140,3 +141,81 @@ def match_citation(citation, citing_doc=None):
 
     # Give up.
     return []
+
+
+def get_citation_matches(opinion, citations):
+    # A list of opinions, as matched to citations
+    citation_matches = []
+
+    for i, citation in enumerate(citations):
+        matched_opinion = None
+
+        # If the citation is a supra citation, try to resolve it to one of
+        # the citations that has already been matched
+        if isinstance(citation, SupraCitation):
+            for op in citation_matches:
+                # The only data point for resolution that we have is the guess
+                # at what the "supra" citation's antecedent is. This is usually
+                # an abbreviated form of the plaintiff, so that guess is stored
+                # in that field and we compare it to the known case names of
+                # the already matched opinions.
+                if citation.antecedent_guess in op.cluster.case_name_full:
+                    # Just use the first one found, since the candidates should
+                    # all be identical. If nothing is found, then the supra
+                    # reference is effectively dropped.
+                    matched_opinion = op
+                    break
+
+        # Likewise, if the citation is a short form citation, try to resolve it
+        # to one of the citations that has already been matched
+        elif isinstance(citation, ShortformCitation):
+            # This time, we can try to match either by using the antecedent
+            # guess (if available; not all short form citations include a
+            # guess) or the reporter and volume number (as a crude backup).
+            # Because the latter matches may not be unique, only accept the
+            # match if there is a single, non-duplicate candidate.
+            if citation.antecedent_guess:
+                for op in citation_matches:
+                    if citation.antecedent_guess in op.cluster.case_name_full:
+                        matched_opinion = op
+                        break
+            else:
+                candidates = []
+                for op in citation_matches:
+                    for c in op.cluster.citations.all():
+                        if citation.reporter == c.reporter and citation.volume == c.volume:
+                            candidates.append(op)
+                if len(set(candidates)) == 1:
+                    matched_opinion = candidates[0]
+
+        # Otherwise, the citation is just a regular citation, so try to match
+        # it directly to an opinion
+        else:
+            matches = match_citation(
+                citation,
+                citing_doc=opinion
+            )
+
+            if len(matches) == 1:
+                match_id = matches[0]['id']
+                try:
+                    matched_opinion = Opinion.objects.get(pk=match_id)
+                except Opinion.DoesNotExist:
+                    # No Opinions returned. Press on.
+                    continue
+                except Opinion.MultipleObjectsReturned:
+                    # Multiple Opinions returned. Press on.
+                    continue
+            else:
+                # No match found for citation
+                continue
+
+        # If an opinion was successfully matched, add it to the list and
+        # set the match fields on the original citation object so that they
+        # can later be used for generating inline html
+        if matched_opinion:
+            citation_matches.append(matched_opinion)
+            citation.match_url = matched_opinion.cluster.get_absolute_url()
+            citation.match_id = matched_opinion.pk
+
+    return citation_matches
