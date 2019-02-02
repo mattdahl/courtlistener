@@ -211,31 +211,32 @@ class ShortformCitation(Citation):
         self.antecedent_guess = antecedent_guess
 
     def __repr__(self):
-        base = '{} {}, at {}'.format(
+        return '{}, {} {}, at {}'.format(
+            self.antecedent_guess,
             self.volume,
             self.reporter,
             self.page
         ).encode('utf-8')
 
-        if self.antecedent_guess:
-            base = self.antecedent_guess + ', ' + base
-
-        return base
-
     def as_regex(self):
-        base = r"{}\s+{},\ at\ {}".format(
+        return r"{},\ {}\s+{},\ at\ {}".format(
+            self.antecedent_guess,
             self.volume,
             re.escape(self.reporter_found),
             self.page
         )
 
-        return base
-
     def as_html(self):
-        template = u'<span class="volume">{}</span> ' + \
-                   u'<span class="reporter">{}</span>, at ' + \
-                   u'<span class="page">{}</span>'
-        inner_html = template.format(self.volume, self.reporter_found, self.page)
+        # Don't include the antecedent guess in the HTML link, since the guess
+        # might be horribly wrong.
+        inner_html = u'<span class="volume">{}</span> ' + \
+                     u'<span class="reporter">{}</span>, at ' + \
+                     u'<span class="page">{}</span>'
+        inner_html = inner_html.format(
+                        self.volume,
+                        self.reporter_found,
+                        self.page
+                     )
         span_class = "citation"
         if self.match_url:
             inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
@@ -243,9 +244,10 @@ class ShortformCitation(Citation):
         else:
             span_class += " no-link"
             data_attr = ''
-        return u'<span class="{}"{}>{}</span>'.format(
+        return u'<span class="{}"{}><span class="antecedent">{}, </span>{}</span>'.format(
             span_class,
             data_attr,
+            self.antecedent_guess,
             inner_html
         )
 
@@ -278,10 +280,13 @@ class SupraCitation(Citation):
         )
 
     def as_html(self):
-        template = u'<span class="antecedent">{}</span>' + \
-                   u'<span>, supra, </span>' + \
-                   u'<span class="page">{}</span>'
-        inner_html = template.format(self.antecedent_guess, self.page)
+        inner_html = u'<span class="antecedent">{}</span>' + \
+                     u'<span>, supra, at </span>' + \
+                     u'<span class="page">{}</span>'
+        inner_html = inner_html.format(
+                        self.antecedent_guess,
+                        self.page
+                     )
         span_class = "citation"
         if self.match_url:
             inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
