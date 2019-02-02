@@ -202,13 +202,11 @@ class ShortformCitation(Citation):
     Example 2: 515 U.S., at 241
     """
 
-    def __init__(self, reporter, page, volume, antecedent_guess=None,
-                 reporter_found=None, reporter_index=None):
+    def __init__(self, reporter, page, volume, antecedent_guess, **kwargs):
         # Like a Citation object, but we have to guess who the antecedent is,
         # if there even is one.
         super(ShortformCitation, self).__init__(reporter, page, volume,
-                                                reporter_found=reporter_found,
-                                                reporter_index=reporter_index)
+                                                **kwargs)
 
         self.antecedent_guess = antecedent_guess
 
@@ -255,13 +253,15 @@ class ShortformCitation(Citation):
 class SupraCitation(Citation):
     """Convenience class which represents a 'supra' citation, i.e., a citation
     to something that is above in the document.
-    Example: Adarand, supra, 237
+    Example 1: Adarand, supra, 237
+    Example 2: Adarand, supra, at 237
+    Example 3: Adarand, 515 supra, at 237
     """
 
-    def __init__(self, antecedent_guess, page):
+    def __init__(self, page, antecedent_guess, **kwargs):
         # Like a Citation object, but without knowledge of the reporter or the
         # volume. Only has a guess at what the antecedent is.
-        super(SupraCitation, self).__init__(None, page, None)
+        super(SupraCitation, self).__init__(None, page, None, **kwargs)
 
         self.antecedent_guess = antecedent_guess
 
@@ -526,15 +526,9 @@ def extract_shortform_citation(words, reporter_index):
     reporter = words[reporter_index]
 
     antecedent_guess = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
-    if antecedent_guess:
-        return ShortformCitation(reporter, page, volume,
-                                 antecedent_guess=antecedent_guess,
-                                 reporter_found=reporter,
-                                 reporter_index=reporter_index)
-    else:
-        return ShortformCitation(reporter, page, volume,
-                                 reporter_found=reporter,
-                                 reporter_index=reporter_index)
+    return ShortformCitation(reporter, page, volume, antecedent_guess,
+                             reporter_found=reporter,
+                             reporter_index=reporter_index)
 
 
 def is_date_in_reporter(editions, year):
@@ -680,9 +674,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
     words = reporter_tokenizer.tokenize(text)
     citations = []
 
-    # Exclude first and last tokens when looking for reporters, because valid
-    # citations must have a volume before and a page after the reporter.
-    for i in xrange(1, len(words) - 1):
+    for i in xrange(0, len(words)):
         citation_token = words[i]
 
         # CASE 1: Citation token is a reporter (e.g., "U. S.").
@@ -725,9 +717,9 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         # resolve this reference until the previous citations are actually
         # matched to opinions.
         elif citation_token.lower() == 'supra,':
-            antecedent_guess = strip_punct(words[i - 1])
             page = parse_page(words[i + 2])
-            citation = SupraCitation(antecedent_guess, page)
+            antecedent_guess = strip_punct(words[i - 1])
+            citation = SupraCitation(page, antecedent_guess)
 
         # CASE 5: The token is not a citation.
         else:
