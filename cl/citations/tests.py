@@ -42,9 +42,14 @@ class CiteTest(TestCase):
         self.assertEqual(tokenize('Failed to recognize 1993 Ct. Sup. 5243-P'),
                          ['Failed', 'to', 'recognize', '1993', 'Ct. Sup.',
                           '5243-P'])
+        # Tests that the tokenizer handles commas after a reporter. In the
+        # past, " U. S. " would match but not " U. S., "
+        self.assertEqual(tokenize('See Roe v. Wade, 410 U. S., at 113'),
+                         ['See', 'Roe', 'v.', 'Wade,', '410', 'U. S.', ',',
+                          'at', '113'])
 
     def test_find_citations(self):
-        """Can we find and make FullCitation objects from strings?"""
+        """Can we find and make citation objects from strings?"""
         test_pairs = (
             # Basic test
             ('1 U.S. 1',
@@ -139,7 +144,46 @@ class CiteTest(TestCase):
              [FullCitation(volume=2017, reporter='IL App (1st)',
                            page='143684-B', canonical_reporter=u'IL App (1st)',
                            lookup_index=0, reporter_index=1,
-                           reporter_found='IL App (1st)')])
+                           reporter_found='IL App (1st)')]),
+            # Test first kind of short form citation
+            ('asdf 1 U. S., at 2',
+             [ShortformCitation(reporter='U.S.', page=2, volume=1,
+                                antecedent_guess='asdf', court='scotus',
+                                canonical_reporter=u'U.S.', lookup_index=0,
+                                reporter_found='U. S.', reporter_index=2)]),
+            # Test second kind of short form citation
+            ('asdf, 1 U. S., at 2',
+             [ShortformCitation(reporter='U.S.', page=2, volume=1,
+                                antecedent_guess='asdf', court='scotus',
+                                canonical_reporter=u'U.S.', lookup_index=0,
+                                reporter_found='U. S.', reporter_index=2)]),
+            # Test supra citation
+            ('asdf, supra, at 2',
+             [SupraCitation(page=2, antecedent_guess='asdf')]),
+            # Test complex Ibid. citation
+            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid.',
+             [FullCitation(plaintiff='foo', defendant='bar', volume=1,
+                           reporter='U.S.', page=12, year=1982,
+                           extra=u'347-348', court='ca4',
+                           canonical_reporter=u'U.S.', lookup_index=0,
+                           reporter_index=4, reporter_found='U.S.'),
+              FullCitation(plaintiff='foo', defendant='bar', volume=1,
+                           reporter='U.S.', page=12, year=1982,
+                           extra=u'347-348', court='ca4',
+                           canonical_reporter=u'U.S.', lookup_index=0,
+                           reporter_index=4, reporter_found='U.S.')]),
+            # Test similarly complex Id. citation
+            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Id., at 7.',
+             [FullCitation(plaintiff='foo', defendant='bar', volume=1,
+                           reporter='U.S.', page=12, year=1982,
+                           extra=u'347-348', court='ca4',
+                           canonical_reporter=u'U.S.', lookup_index=0,
+                           reporter_index=4, reporter_found='U.S.'),
+              FullCitation(plaintiff='foo', defendant='bar', volume=1,
+                           reporter='U.S.', page=12, year=1982,
+                           extra=u'347-348', court='ca4',
+                           canonical_reporter=u'U.S.', lookup_index=0,
+                           reporter_index=4, reporter_found='U.S.')])
         )
         for q, a in test_pairs:
             print "Testing citation extraction for %s..." % q,
