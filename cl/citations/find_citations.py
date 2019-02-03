@@ -266,41 +266,49 @@ class SupraCitation(Citation):
     Example 3: Adarand, 515 supra, at 237
     """
 
-    def __init__(self, page, antecedent_guess, **kwargs):
+    def __init__(self, antecedent_guess, page=None, volume=None,  **kwargs):
         # Like a Citation object, but without knowledge of the reporter or the
         # volume. Only has a guess at what the antecedent is.
-        super(SupraCitation, self).__init__(None, page, None, **kwargs)
+        super(SupraCitation, self).__init__(None, page, volume, **kwargs)
 
         self.antecedent_guess = antecedent_guess
 
     def __repr__(self):
-        return '{}, supra, at {}'.format(
+        return '{} supra, at {}'.format(
             self.antecedent_guess,
             self.page
         ).encode('utf-8')
 
     def as_regex(self):
-        return r'{} supra, at {}'.format(
-            self.antecedent_guess,
-            self.page
-        )
+        if self.volume:
+            s = r'%s\ %d\ supra,' % (
+                self.antecedent_guess,
+                self.volume
+            )
+        else:
+            s = r'%s\ supra,' % self.antecedent_guess
+
+        if self.page:
+            s += r' at %d' % self.page
+
+        return s
 
     def as_html(self):
-        inner_html = u'<span class="antecedent">{}</span>' + \
-                     u'<span> supra, at </span>' + \
-                     u'<span class="page">{}</span>'
-        inner_html = inner_html.format(
-                        self.antecedent_guess,
-                        self.page
-                     )
+        inner_html = u'<span class="antecedent">%s</span>' % self.antecedent_guess
+        if self.volume:
+            inner_html += u'<span class="volume"> %d</span>' % self.volume
+        inner_html += u'<span> supra,</span>'
+        if self.page:
+            inner_html += u'<span> at </span><span class="page">%d</span>' % self.page
+
         span_class = "citation"
         if self.match_url:
-            inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
-            data_attr = u' data-id="{}"'.format(self.match_id)
+            inner_html = u'<a href="%s">%s</a>' % (self.match_url, inner_html)
+            data_attr = u' data-id="%s"' % self.match_id
         else:
             span_class += " no-link"
             data_attr = ''
-        return u'<span class="{}"{}>{}</span>'.format(
+        return u'<span class="%s"%s>%s</span>' % (
             span_class,
             data_attr,
             inner_html
@@ -555,13 +563,17 @@ def extract_supra_citation(words, supra_index):
     Shortform 2: Adarand, supra, somethingelse
     """
 
+    volume = None
     page = parse_page(words[supra_index + 2])
     antecedent_guess = words[supra_index - 1]
 
-    if antecedent_guess == ',':
+    if antecedent_guess.isdigit():
+        volume = int(antecedent_guess)
+        antecedent_guess = words[supra_index - 2]
+    elif antecedent_guess == ',':
         antecedent_guess = words[supra_index - 2] + ','
 
-    return SupraCitation(page, antecedent_guess)
+    return SupraCitation(antecedent_guess, page=page, volume=volume)
 
 
 def is_date_in_reporter(editions, year):
