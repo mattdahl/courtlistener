@@ -158,7 +158,7 @@ def get_citation_matches(opinion, citations):
                 # of what the supra citation's antecedent is, so we try to
                 # match that string to one of the known case names of the
                 # already matched opinions.
-                if citation.antecedent_guess in op.cluster.case_name_full:
+                if strip_punct(citation.antecedent_guess) in op.cluster.case_name_full:
                     # Just use the first one found, since the candidates should
                     # all be identical. If nothing is found, then the supra
                     # reference is effectively dropped.
@@ -174,7 +174,7 @@ def get_citation_matches(opinion, citations):
             # Because the latter matches may not be unique, only accept the
             # match if there is a single, non-duplicate candidate.
             for op in citation_matches:
-                if citation.antecedent_guess in op.cluster.case_name_full:
+                if strip_punct(citation.antecedent_guess) in op.cluster.case_name_full:
                     matched_opinion = op
                     break
             if not matched_opinion:

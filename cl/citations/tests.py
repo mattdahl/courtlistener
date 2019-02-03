@@ -154,12 +154,24 @@ class CiteTest(TestCase):
             # Test second kind of short form citation
             ('asdf, 1 U. S., at 2',
              [ShortformCitation(reporter='U.S.', page=2, volume=1,
-                                antecedent_guess='asdf', court='scotus',
+                                antecedent_guess='asdf,', court='scotus',
+                                canonical_reporter=u'U.S.', lookup_index=0,
+                                reporter_found='U. S.', reporter_index=2)]),
+            # Test short form citation with preceding ASCII quotation
+            (u'asdf,” 1 U. S., at 2',
+             [ShortformCitation(reporter='U.S.', page=2, volume=1,
+                                antecedent_guess=u'asdf,”', court='scotus',
+                                canonical_reporter=u'U.S.', lookup_index=0,
+                                reporter_found='U. S.', reporter_index=2)]),
+            # Test short form citation when case name looks like a reporter
+            ('Johnson, 1 U. S., at 2',
+             [ShortformCitation(reporter='U.S.', page=2, volume=1,
+                                antecedent_guess=u'Johnson,', court='scotus',
                                 canonical_reporter=u'U.S.', lookup_index=0,
                                 reporter_found='U. S.', reporter_index=2)]),
             # Test supra citation
             ('asdf, supra, at 2',
-             [SupraCitation(page=2, antecedent_guess='asdf')]),
+             [SupraCitation(page=2, antecedent_guess='asdf,')]),
             # Test complex Ibid. citation
             ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid.',
              [FullCitation(plaintiff='foo', defendant='bar', volume=1,
