@@ -76,34 +76,14 @@ class Citation(object):
             'reporter', 'volume', 'page', 'canonical_reporter', 'lookup_index',
         ]
 
+    def as_regex(self):
+        pass
+
+    def as_html(self):
+        pass
+
     def base_citation(self):
         return u"%d %s %s" % (self.volume, self.reporter, self.page)
-
-    def as_regex(self):
-        return r"%d(\s+)%s(\s+)%s" % (
-            self.volume,
-            re.escape(self.reporter_found),
-            self.page
-        )
-
-    # TODO: Update css for no-link citations
-    def as_html(self):
-        # Uses reporter_found so that we don't update the text. This guards us
-        # against accidentally updating things like docket number 22 Cr. 1 as
-        # 22 Cranch 1, which is totally wrong.
-        template = u'<span class="volume">%(volume)d</span>\\1' \
-                   u'<span class="reporter">%(reporter)s</span>\\2' \
-                   u'<span class="page">%(page)s</span>'
-        inner_html = template % self.__dict__
-        span_class = "citation"
-        if self.match_url:
-            inner_html = u'<a href="%s">%s</a>' % (self.match_url, inner_html)
-            data_attr = u' data-id="%s"' % self.match_id
-        else:
-            span_class += " no-link"
-            data_attr = ''
-        return u'<span class="%s"%s>%s</span>' % \
-               (span_class, data_attr, inner_html)
 
     def _get_cite_type(self):
         """Figure out the Citation.type value."""
@@ -191,6 +171,32 @@ class FullCitation(Citation):
         # Fully implements the standard Citation object.
         super(FullCitation, self).__init__(*args, **kwargs)
 
+    def as_regex(self):
+        return r"%d(\s+)%s(\s+)%s" % (
+            self.volume,
+            re.escape(self.reporter_found),
+            self.page
+        )
+
+    # TODO: Update css for no-link citations
+    def as_html(self):
+        # Uses reporter_found so that we don't update the text. This guards us
+        # against accidentally updating things like docket number 22 Cr. 1 as
+        # 22 Cranch 1, which is totally wrong.
+        template = u'<span class="volume">%(volume)d</span>\\1' \
+                   u'<span class="reporter">%(reporter)s</span>\\2' \
+                   u'<span class="page">%(page)s</span>'
+        inner_html = template % self.__dict__
+        span_class = "citation"
+        if self.match_url:
+            inner_html = u'<a href="%s">%s</a>' % (self.match_url, inner_html)
+            data_attr = u' data-id="%s"' % self.match_id
+        else:
+            span_class += " no-link"
+            data_attr = ''
+        return u'<span class="%s"%s>%s</span>' % \
+               (span_class, data_attr, inner_html)
+
 
 class ShortformCitation(Citation):
     """Convenience class which represents a short form citation, i.e., the kind
@@ -211,15 +217,15 @@ class ShortformCitation(Citation):
         self.antecedent_guess = antecedent_guess
 
     def __repr__(self):
-        return '{}, {} {}, at {}'.format(
+        return u'%s, %d %s, at %d' % (
             self.antecedent_guess,
             self.volume,
             self.reporter,
             self.page
-        ).encode('utf-8')
+        )
 
     def as_regex(self):
-        return r"{},\ {}\s+{},\ at\ {}".format(
+        return r'%s\ %d\s+%s,\ at\ %d' % (
             self.antecedent_guess,
             self.volume,
             re.escape(self.reporter_found),
@@ -229,22 +235,22 @@ class ShortformCitation(Citation):
     def as_html(self):
         # Don't include the antecedent guess in the HTML link, since the guess
         # might be horribly wrong.
-        inner_html = u'<span class="volume">{}</span> ' + \
-                     u'<span class="reporter">{}</span>, at ' + \
-                     u'<span class="page">{}</span>'
-        inner_html = inner_html.format(
+        inner_html = u'<span class="volume">%d</span> ' + \
+                     u'<span class="reporter">%s</span>, at ' + \
+                     u'<span class="page">%d</span>'
+        inner_html = inner_html % (
                         self.volume,
-                        self.reporter_found,
+                        self.reporter,
                         self.page
                      )
         span_class = "citation"
         if self.match_url:
-            inner_html = u'<a href="{}">{}</a>'.format(self.match_url, inner_html)
-            data_attr = u' data-id="{}"'.format(self.match_id)
+            inner_html = u'<a href="%s">%s</a>' % (self.match_url, inner_html)
+            data_attr = u' data-id="%s"' % self.match_id
         else:
             span_class += " no-link"
             data_attr = ''
-        return u'<span class="{}"{}><span class="antecedent">{}, </span>{}</span>'.format(
+        return u'<span class="%s"%s><span class="antecedent">%s </span>%s</span>' % (
             span_class,
             data_attr,
             self.antecedent_guess,
@@ -274,14 +280,14 @@ class SupraCitation(Citation):
         ).encode('utf-8')
 
     def as_regex(self):
-        return r'{}, supra, at {}'.format(
+        return r'{} supra, at {}'.format(
             self.antecedent_guess,
             self.page
         )
 
     def as_html(self):
         inner_html = u'<span class="antecedent">{}</span>' + \
-                     u'<span>, supra, at </span>' + \
+                     u'<span> supra, at </span>' + \
                      u'<span class="page">{}</span>'
         inner_html = inner_html.format(
                         self.antecedent_guess,
@@ -530,10 +536,32 @@ def extract_shortform_citation(words, reporter_index):
 
     reporter = words[reporter_index]
 
-    antecedent_guess = strip_punct(words[reporter_index - 2]).encode('ascii', 'ignore')
+    antecedent_guess = words[reporter_index - 2]
+
+    if antecedent_guess == ',':
+        antecedent_guess = words[reporter_index - 3] + ','
+
     return ShortformCitation(reporter, page, volume, antecedent_guess,
                              reporter_found=reporter,
                              reporter_index=reporter_index)
+
+
+def extract_supra_citation(words, supra_index):
+    """Given a list of words and the index of a supra token, look before
+    and after to see if this is a supra citation. If found, construct
+    and return a SupraCitation object.
+
+    Shortform 1: Adarand, supra, at 240
+    Shortform 2: Adarand, supra, somethingelse
+    """
+
+    page = parse_page(words[supra_index + 2])
+    antecedent_guess = words[supra_index - 1]
+
+    if antecedent_guess == ',':
+        antecedent_guess = words[supra_index - 2] + ','
+
+    return SupraCitation(page, antecedent_guess)
 
 
 def is_date_in_reporter(editions, year):
@@ -722,9 +750,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         # resolve this reference until the previous citations are actually
         # matched to opinions.
         elif citation_token.lower() == 'supra,':
-            page = parse_page(words[i + 2])
-            antecedent_guess = strip_punct(words[i - 1])
-            citation = SupraCitation(page, antecedent_guess)
+            citation = extract_supra_citation(words, i)
 
         # CASE 5: The token is not a citation.
         else:
