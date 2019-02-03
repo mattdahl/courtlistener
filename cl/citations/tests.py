@@ -328,30 +328,68 @@ class CiteTest(TestCase):
 
     def test_make_html(self):
         """Can we make basic HTML conversions properly?"""
-        good_html = ('<pre class="inline">asdf </pre><span class="citation '
-                     'no-link"><span class="volume">22</span> <span '
-                     'class="reporter">U.S.</span> <span class="page">33</span>'
-                     '</span><pre class="inline"> asdf</pre>')
 
-        # Simple example
-        s = 'asdf 22 U.S. 33 asdf'
-        opinion = Opinion(plain_text=s)
-        citations = get_citations(s)
-        new_html = create_cited_html(opinion, citations)
-        self.assertEqual(
-            good_html,
-            new_html,
-        )
+        full_citation_html = ('<pre class="inline">asdf </pre><span class="'
+                              'citation no-link"><span class="volume">22'
+                              '</span> <span class="reporter">U.S.</span> '
+                              '<span class="page">33</span></span><pre class='
+                              '"inline"> asdf</pre>')
+        test_pairs = [
+            # Simple example for full citations
+            ('asdf 22 U.S. 33 asdf', full_citation_html),
 
-        # Using a variant format for U.S. (Issue #409)
-        s = 'asdf 22 U. S. 33 asdf'
-        opinion = Opinion(plain_text=s)
-        citations = get_citations(s)
-        new_html = create_cited_html(opinion, citations)
-        self.assertEqual(
-            good_html,
-            new_html,
-        )
+            # Using a variant format for U.S. (Issue #409)
+            ('asdf 22 U. S. 33 asdf', full_citation_html),
+
+            # First kind of short form citation
+            ('asdf. 515 U.S., at 240. foobar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf. </span><span class="volume">515</span> '
+             '<span class="reporter">U.S.</span>, at <span class="page">240'
+             '</span></span><pre class="inline">. foobar</pre>'),
+
+            # Second kind of short form citation
+            ('asdf, 1 U. S., at 2. foobar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf, </span><span class="volume">1</span> '
+             '<span class="reporter">U.S.</span>, at <span class="page">2'
+             '</span></span><pre class="inline">. foobar</pre>'),
+
+            # First kind of supra citation
+            ('asdf, supra, at 2. foobar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf,</span><span> supra,</span><span> at '
+             '</span><span class="page">2</span></span><pre class="inline">'
+             '. foobar</pre>'),
+
+            # Second kind of supra citation (with volume)
+            ('asdf, 123 supra, at 2. foo bar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf,</span><span class="volume"> 123</span>'
+             '<span> supra,</span><span> at </span><span class="page">2</span>'
+             '</span><pre class="inline">. foo bar</pre>'),
+
+            # Third kind of supra citation (sans page)
+            ('asdf, supra, foo bar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf,</span><span> supra,</span></span><pre '
+             'class="inline"> foo bar</pre>'),
+        ]
+
+        for s, expected_html in test_pairs:
+            print "Testing html conversion for %s..." % s,
+            opinion = Opinion(plain_text=s)
+            citations = get_citations(s)
+            created_html = create_cited_html(opinion, citations)
+            self.assertEqual(
+                created_html,
+                expected_html,
+                msg='\n%s\n\n    !=\n\n%s' % (
+                    created_html,
+                    expected_html
+                )
+            )
+            print "✓"
 
 
 class MatchingTest(IndexedSolrTestCase):
