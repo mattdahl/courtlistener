@@ -169,9 +169,15 @@ class CiteTest(TestCase):
                                 antecedent_guess=u'Johnson,', court='scotus',
                                 canonical_reporter=u'U.S.', lookup_index=0,
                                 reporter_found='U. S.', reporter_index=2)]),
-            # Test supra citation
+            # Test first kind of supra citation
             ('asdf, supra, at 2',
-             [SupraCitation(page=2, antecedent_guess='asdf,')]),
+             [SupraCitation(antecedent_guess='asdf,', page=2, volume=None)]),
+            # Test second kind of supra citation (with volume)
+            ('asdf, 123 supra, at 2',
+             [SupraCitation(antecedent_guess='asdf,', page=2, volume=123)]),
+            # Test third kind of supra citation (sans page)
+            ('asdf, supra, foo bar',
+             [SupraCitation(antecedent_guess='asdf,', page=None, volume=None)]),
             # Test complex Ibid. citation
             ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid.',
              [FullCitation(plaintiff='foo', defendant='bar', volume=1,
