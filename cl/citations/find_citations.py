@@ -164,6 +164,7 @@ class FullCitation(Citation):
     """Convenience class which represents a standard, fully named citation,
     i.e., the kind of citation that marks the first time a document is cited.
     This kind of citation can be easily matched to an opinion in our database.
+
     Example: Adarand Constructors, Inc. v. Peña, 515 U.S. 200, 240
     """
 
@@ -200,17 +201,19 @@ class FullCitation(Citation):
 
 class ShortformCitation(Citation):
     """Convenience class which represents a short form citation, i.e., the kind
-    of citation made after a full citation has already appeared. These
-    citations come in two forms. And because they lack the full case name and
-    might have a different page number than the canonical citation, matching
-    them to an opinion directly is difficult.
+    of citation made after a full citation has already appeared. This kind of
+    citation lacks a full case name and usually has a different page number
+    than the canonical citation, so this kind cannot be matched to an opinion
+    directly. Instead, we will later try to resolve it to one of the foregoing
+    full citations.
+
     Example 1: Adarand, 515 U.S., at 241
     Example 2: 515 U.S., at 241
     """
 
     def __init__(self, reporter, page, volume, antecedent_guess, **kwargs):
-        # Like a Citation object, but we have to guess who the antecedent is,
-        # if there even is one.
+        # Like a Citation object, but we have to guess who the antecedent is
+        # and the page number is non-canonical
         super(ShortformCitation, self).__init__(reporter, page, volume,
                                                 **kwargs)
 
@@ -260,10 +263,15 @@ class ShortformCitation(Citation):
 
 class SupraCitation(Citation):
     """Convenience class which represents a 'supra' citation, i.e., a citation
-    to something that is above in the document.
-    Example 1: Adarand, supra, 237
-    Example 2: Adarand, supra, at 237
-    Example 3: Adarand, 515 supra, at 237
+    to something that is above in the document. Like a short form citation,
+    this kind of citation lacks a full case name and usually has a different
+    page number than the canonical citation, so this kind cannot be matched to
+    an opinion directly. Instead, we will later try to resolve it to one of the
+    foregoing full citations.
+
+    Example 1: Adarand, supra, at 240
+    Example 2: Adarand, 515 supra, at 240
+    Example 3: Adarand, supra, somethingelse
     """
 
     def __init__(self, antecedent_guess, page=None, volume=None,  **kwargs):
@@ -522,7 +530,7 @@ def extract_full_citation(words, reporter_index):
 
 def extract_shortform_citation(words, reporter_index):
     """Given a list of words and the index of a federal reporter, look before
-    and after to see if this is a shortform citation. If found, construct
+    and after to see if this is a short form citation. If found, construct
     and return a ShortformCitation object.
 
     Shortform 1: Adarand, 515 U.S., at 241
@@ -559,8 +567,9 @@ def extract_supra_citation(words, supra_index):
     and after to see if this is a supra citation. If found, construct
     and return a SupraCitation object.
 
-    Shortform 1: Adarand, supra, at 240
-    Shortform 2: Adarand, supra, somethingelse
+    Supra 1: Adarand, supra, at 240
+    Supra 2: Adarand, 515 supra, at 240
+    Supra 3: Adarand, supra, somethingelse
     """
 
     volume = None
@@ -780,6 +789,6 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
 
     # Returns a list of citations ordered in the sequence that they appear in
     # the document. The ordering of this list is important because we will
-    # later rely on that order to reconstruct the antecedents of the
-    # SupraCitation objects.
+    # later rely on that order to reconstruct the references of the
+    # ShortformCitation and SupraCitation objects.
     return citations
