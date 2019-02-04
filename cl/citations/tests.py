@@ -341,21 +341,21 @@ class CiteTest(TestCase):
             # Using a variant format for U.S. (Issue #409)
             ('asdf 22 U. S. 33 asdf', full_citation_html),
 
-            # First kind of short form citation
+            # First kind of short form citation (meaningless antecedent)
             ('asdf. 515 U.S., at 240. foobar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf. </span><span class="volume">515</span> '
              '<span class="reporter">U.S.</span>, at <span class="page">240'
              '</span></span><pre class="inline">. foobar</pre>'),
 
-            # Second kind of short form citation
+            # Second kind of short form citation (meaningful antecedent)
             ('asdf, 1 U. S., at 2. foobar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf, </span><span class="volume">1</span> '
              '<span class="reporter">U.S.</span>, at <span class="page">2'
              '</span></span><pre class="inline">. foobar</pre>'),
 
-            # First kind of supra citation
+            # First kind of supra citation (standard kind)
             ('asdf, supra, at 2. foobar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf,</span><span> supra,</span><span> at '
@@ -393,17 +393,15 @@ class CiteTest(TestCase):
 
 
 class MatchingTest(IndexedSolrTestCase):
-    def test_citation_matching(self):
-        """Creates a few documents that contain specific citations, then
-        attempts to find and match those citations.
-
-        This becomes a bit of an integration test, which is fine.
+    def test_citation_resolution(self):
+        """Tests whether different types of citations (i.e., full, short form,
+        and supra) resolve correctly to opinion matches.
         """
 
         # Opinion fixture info:
-        # pk=7 is mocked with name 'foo v. bar' and citation '1 U.S. 1'
-        # pk=8 is mocked with name 'qwerty v. uiop' and citation '2 F.3d 2'
-        # pk=9 is mocked with name 'lorem v. ipsum' and citation '1 U.S. 50'
+        # pk=7 is mocked with name 'Foo v. Bar' and citation '1 U.S. 1'
+        # pk=8 is mocked with name 'Qwerty v. Uiop' and citation '2 F.3d 2'
+        # pk=9 is mocked with name 'Lorem v. Ipsum' and citation '1 U.S. 50'
 
         test_pairs = [
             # Simple test for matching a single, full citation
@@ -437,7 +435,7 @@ class MatchingTest(IndexedSolrTestCase):
                              canonical_reporter=u'U.S.', lookup_index=0,
                              court='scotus', reporter_index=1,
                              reporter_found='U.S.'),
-                SupraCitation(antecedent_guess='bar', page=99, volume=1)
+                SupraCitation(antecedent_guess='Bar', page=99, volume=1)
                 ], [
                 Opinion.objects.get(pk=7),
                 Opinion.objects.get(pk=7)
@@ -450,13 +448,14 @@ class MatchingTest(IndexedSolrTestCase):
                              court='scotus', reporter_index=1,
                              reporter_found='U.S.'),
                 ShortformCitation(reporter='U.S.', page=99, volume=1,
-                                  antecedent_guess='bar,')
+                                  antecedent_guess='Bar,')
             ], [
                 Opinion.objects.get(pk=7),
                 Opinion.objects.get(pk=7)
             ]),
+
             # Test resolving a short form citation when its reporter and
-            # volume matches two possible candidates. We expect its antecedent
+            # volume match two possible candidates. We expect its antecedent
             # guess to provide the correct tiebreaker.
             ([
                 FullCitation(volume=1, reporter='U.S.', page=1,
@@ -468,14 +467,15 @@ class MatchingTest(IndexedSolrTestCase):
                              court='scotus', reporter_index=1,
                              reporter_found='U.S.'),
                 ShortformCitation(reporter='U.S.', page=99, volume=1,
-                                  antecedent_guess='bar')
+                                  antecedent_guess='Bar')
             ], [
                 Opinion.objects.get(pk=7),
                 Opinion.objects.get(pk=9),
                 Opinion.objects.get(pk=7)
             ]),
+
             # Test resolving a short form citation when its reporter and
-            # volume matches two possible candidates, and when it lacks a
+            # volume match two possible candidates, and when it lacks a
             # meaningful antecedent.
             # We expect the short form citation to not be matched.
             ([
@@ -493,6 +493,7 @@ class MatchingTest(IndexedSolrTestCase):
                 Opinion.objects.get(pk=7),
                 Opinion.objects.get(pk=9)
             ]),
+
             # Test resolving a short form citation when its reporter and
             # volume are erroneous.
             # We expect the short form citation to not be matched.
@@ -533,6 +534,13 @@ class MatchingTest(IndexedSolrTestCase):
         results = match_citation(citation)
         self.assertEqual([], results)
 
+
+class UpdateTest(IndexedSolrTestCase):
+    """Tests whether the update task performs correctly, i.e., whether it
+    creates new OpinionsCited objects and whether it updates the citation
+    counters.
+    """
+
     def test_citation_increment(self):
         """Make sure that found citations update the increment on the cited
         opinion's citation count"""
@@ -550,6 +558,40 @@ class MatchingTest(IndexedSolrTestCase):
                 u"the citation was not found. Count was: %s instead of %s"
                 % (cited.cluster.citation_count, expected_count)
         )
+
+    def test_opinionscited_creation(self):
+        """Make sure that found citations are stored in the database as
+        OpinionsCited objects with the appropriate references and depth.
+        """
+        # Opinion fixture info:
+        # pk=10 is our mock citing opinion, containing a number of references
+        # to other mocked opinions, mixed about. It's hard to exhaustively
+        # test all combinations, but this test case is made to be deliberately
+        # complex, in an effort to "trick" the algorithm. Cited opinions:
+        # pk=7: 1 FullCitation, 1 ShortformCitation, 1 SupraCitation (depth=3)
+        # pk=8: 3 FullCitation (one normal, one Id., and one Ibid.),
+        #   1 ShortformCitation, 2 SupraCitation (depth=6)
+        # pk=9: 1 FullCitation, 1 ShortformCitation (depth=2)
+        remove_citations_from_imported_fixtures()
+        citing = Opinion.objects.get(pk=10)
+        update_document(citing)
+
+        test_pairs = [
+            (Opinion.objects.get(pk=7), 3),
+            (Opinion.objects.get(pk=8), 6),
+            (Opinion.objects.get(pk=9), 2)
+        ]
+
+        for cited, depth in test_pairs:
+            print "Testing OpinionsCited creation for %s..." % cited,
+            self.assertEqual(
+                OpinionsCited.objects.get(
+                    citing_opinion=citing,
+                    cited_opinion=cited
+                ).depth,
+                depth
+            )
+            print "✓"
 
 
 class CitationFeedTest(IndexedSolrTestCase):
