@@ -217,7 +217,7 @@ class ShortformCitation(Citation):
         self.antecedent_guess = antecedent_guess
 
     def __repr__(self):
-        return u'%s, %d %s, at %d' % (
+        return u'%s, %d %s, at %s' % (
             self.antecedent_guess,
             self.volume,
             self.reporter,
@@ -225,8 +225,8 @@ class ShortformCitation(Citation):
         )
 
     def as_regex(self):
-        return r'%s\ %d\s+%s,\ at\ %d' % (
-            self.antecedent_guess,
+        return r'%s\ %d\s+%s,\ at\ %s' % (
+            re.escape(self.antecedent_guess),
             self.volume,
             re.escape(self.reporter_found),
             self.page
@@ -237,7 +237,7 @@ class ShortformCitation(Citation):
         # might be horribly wrong.
         inner_html = u'<span class="volume">%d</span> ' + \
                      u'<span class="reporter">%s</span>, at ' + \
-                     u'<span class="page">%d</span>'
+                     u'<span class="page">%s</span>'
         inner_html = inner_html % (
                         self.volume,
                         self.reporter,
@@ -282,14 +282,14 @@ class SupraCitation(Citation):
     def as_regex(self):
         if self.volume:
             s = r'%s\ %d\ supra,' % (
-                self.antecedent_guess,
+                re.escape(self.antecedent_guess),
                 self.volume
             )
         else:
-            s = r'%s\ supra,' % self.antecedent_guess
+            s = r'%s\ supra,' % re.escape(self.antecedent_guess)
 
         if self.page:
-            s += r' at %d' % self.page
+            s += r' at %s' % self.page
 
         return s
 
@@ -299,7 +299,7 @@ class SupraCitation(Citation):
             inner_html += u'<span class="volume"> %d</span>' % self.volume
         inner_html += u'<span> supra,</span>'
         if self.page:
-            inner_html += u'<span> at </span><span class="page">%d</span>' % self.page
+            inner_html += u'<span> at </span><span class="page">%s</span>' % self.page
 
         span_class = "citation"
         if self.match_url:

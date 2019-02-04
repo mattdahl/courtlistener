@@ -11,7 +11,7 @@ from cl.citations.find_citations import get_citations, is_date_in_reporter, \
     Citation, FullCitation, ShortformCitation, SupraCitation
 from cl.citations.management.commands.cl_add_parallel_citations import \
     identify_parallel_citations, make_edge_list
-from cl.citations.match_citations import match_citation
+from cl.citations.match_citations import match_citation, get_citation_matches
 from cl.citations.reporter_tokenizer import tokenize
 from cl.citations.tasks import update_document, create_cited_html
 from cl.lib.test_helpers import IndexedSolrTestCase
@@ -145,13 +145,13 @@ class CiteTest(TestCase):
                            page='143684-B', canonical_reporter=u'IL App (1st)',
                            lookup_index=0, reporter_index=1,
                            reporter_found='IL App (1st)')]),
-            # Test first kind of short form citation
+            # Test first kind of short form citation (meaningless antecedent)
             ('asdf 1 U. S., at 2',
              [ShortformCitation(reporter='U.S.', page=2, volume=1,
                                 antecedent_guess='asdf', court='scotus',
                                 canonical_reporter=u'U.S.', lookup_index=0,
                                 reporter_found='U. S.', reporter_index=2)]),
-            # Test second kind of short form citation
+            # Test second kind of short form citation (meaningful antecedent)
             ('asdf, 1 U. S., at 2',
              [ShortformCitation(reporter='U.S.', page=2, volume=1,
                                 antecedent_guess='asdf,', court='scotus',
@@ -169,7 +169,7 @@ class CiteTest(TestCase):
                                 antecedent_guess=u'Johnson,', court='scotus',
                                 canonical_reporter=u'U.S.', lookup_index=0,
                                 reporter_found='U. S.', reporter_index=2)]),
-            # Test first kind of supra citation
+            # Test first kind of supra citation (standard kind)
             ('asdf, supra, at 2',
              [SupraCitation(antecedent_guess='asdf,', page=2, volume=None)]),
             # Test second kind of supra citation (with volume)
@@ -399,6 +399,143 @@ class MatchingTest(IndexedSolrTestCase):
 
         This becomes a bit of an integration test, which is fine.
         """
+
+        # Opinion fixture info:
+        # pk=7 is mocked with name 'foo v. bar' and citation '1 U.S. 1'
+        # pk=8 is mocked with name 'qwerty v. uiop' and citation '2 F.3d 2'
+        # pk=9 is mocked with name 'lorem v. ipsum' and citation '1 U.S. 50'
+
+        test_pairs = [
+            # Simple test for matching a single, full citation
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.')
+            ], [
+                Opinion.objects.get(pk=7)
+            ]),
+
+            # Test matching multiple full citations to different documents
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                FullCitation(volume=2, reporter='F.3d', page=2,
+                             canonical_reporter=u'F.', lookup_index=0,
+                             court='ca1', reporter_index=1,
+                             reporter_found='F.3d')
+            ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=8)
+            ]),
+
+            # Test resolving a supra citation
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                SupraCitation(antecedent_guess='bar', page=99, volume=1)
+                ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=7)
+            ]),
+
+            # Test resolving a short form citation with a meaningful antecedent
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                ShortformCitation(reporter='U.S.', page=99, volume=1,
+                                  antecedent_guess='bar,')
+            ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=7)
+            ]),
+            # Test resolving a short form citation when its reporter and
+            # volume matches two possible candidates. We expect its antecedent
+            # guess to provide the correct tiebreaker.
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                FullCitation(volume=1, reporter='U.S.', page=50,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                ShortformCitation(reporter='U.S.', page=99, volume=1,
+                                  antecedent_guess='bar')
+            ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=9),
+                Opinion.objects.get(pk=7)
+            ]),
+            # Test resolving a short form citation when its reporter and
+            # volume matches two possible candidates, and when it lacks a
+            # meaningful antecedent.
+            # We expect the short form citation to not be matched.
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                FullCitation(volume=1, reporter='U.S.', page=50,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                ShortformCitation(reporter='U.S.', page=99, volume=1,
+                                  antecedent_guess='somethingwrong')
+            ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=9)
+            ]),
+            # Test resolving a short form citation when its reporter and
+            # volume are erroneous.
+            # We expect the short form citation to not be matched.
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                ShortformCitation(reporter='F.3d', page=99, volume=26,
+                                  antecedent_guess='somethingwrong')
+            ], [
+                Opinion.objects.get(pk=7)
+            ])
+        ]
+
+        for citations, expected_matches in test_pairs:
+            print "Testing citation matching for %s..." % citations
+
+            # The citing opinion does not matter for this test
+            citing_opinion = Opinion.objects.get(pk=1)
+
+            citation_matches = get_citation_matches(citing_opinion, citations)
+            self.assertEqual(
+                citation_matches,
+                expected_matches,
+                msg='\n%s\n\n    !=\n\n%s' % (
+                    citation_matches,
+                    expected_matches
+                )
+            )
+            print "✓"
+
+    def test_citation_matching_issue621(self):
+        """Make sure that a citation like 1 Wheat 9 doesn't match 9 Wheat 1"""
+        # The fixture contains a reference to 9 F. 1, so we expect no results.
+        citation_str = '1 F. 9 (1795)'
+        citation = get_citations(citation_str)[0]
+        results = match_citation(citation)
+        self.assertEqual([], results)
+
+    def test_citation_increment(self):
+        """Make sure that found citations update the increment on the cited
+        opinion's citation count"""
         remove_citations_from_imported_fixtures()
 
         citing = Opinion.objects.get(pk=3)
@@ -413,14 +550,6 @@ class MatchingTest(IndexedSolrTestCase):
                 u"the citation was not found. Count was: %s instead of %s"
                 % (cited.cluster.citation_count, expected_count)
         )
-
-    def test_citation_matching_issue621(self):
-        """Make sure that a citation like 1 Wheat 9 doesn't match 9 Wheat 1"""
-        # The fixture contains a reference to 9 F. 1, so we expect no results.
-        citation_str = '1 F. 9 (1795)'
-        citation = get_citations(citation_str)[0]
-        results = match_citation(citation)
-        self.assertEqual([], results)
 
 
 class CitationFeedTest(IndexedSolrTestCase):

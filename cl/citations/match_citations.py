@@ -168,23 +168,30 @@ def get_citation_matches(opinion, citations):
         # Likewise, if the citation is a short form citation, try to resolve it
         # to one of the citations that has already been matched
         elif isinstance(citation, ShortformCitation):
-            # This time, we can try to match either by using the antecedent
-            # guess (if available; not all short form citations include a
-            # guess) or the reporter and volume number (as a crude backup).
-            # Because the latter matches may not be unique, only accept the
-            # match if there is a single, non-duplicate candidate.
+            # We first try to match by using the reporter and volume number.
+            # However, because matches made using this heuristic may not be
+            # unique, we then refine by using the antecedent guess and only
+            # accept the match if there is a single unique candidate. This
+            # refinement may still fail (because the guess could be
+            # meaningless), in which case the citation is not resolvable and
+            # is dropped.
+            candidates = []
             for op in citation_matches:
-                if strip_punct(citation.antecedent_guess) in op.cluster.case_name_full:
-                    matched_opinion = op
-                    break
-            if not matched_opinion:
-                candidates = []
-                for op in citation_matches:
-                    for c in op.cluster.citations.all():
-                        if citation.reporter == c.reporter and citation.volume == c.volume:
-                            candidates.append(op)
-                if len(set(candidates)) == 1:
-                    matched_opinion = candidates[0]
+                for c in op.cluster.citations.all():
+                    if citation.reporter == c.reporter and citation.volume == c.volume:
+                        candidates.append(op)
+
+            candidates = list(set(candidates))  # Remove duplicate matches
+            if len(candidates) == 1:
+                matched_opinion = candidates[0]  # Accept the match!
+            else:
+                refined_candidates = []
+                for op in candidates:
+                    if strip_punct(citation.antecedent_guess) in op.cluster.case_name_full:
+                        refined_candidates.append(op)
+
+                if len(refined_candidates) == 1:
+                    matched_opinion = refined_candidates[0]  # Accept the match!
 
         # Otherwise, the citation is just a regular citation, so try to match
         # it directly to an opinion
