@@ -86,17 +86,21 @@ def create_cited_html(opinion, citations):
 def update_document(self, opinion, index=True):
     """Get the citations for an item and save it and add it to the index if
     requested."""
+    # Returns a list of Citation objects, i.e., something like
+    # [FullCitation, FullCitation, ShortformCitation, FullCitation,
+    #   SupraCitation, SupraCitation, ShortformCitation, FullCitation]
     citations = get_document_citations(opinion)
 
-    # First, match the naive Citation objects to actual Opinion objects
+    # Match all those different Citation objects to Opinion objects, using a
+    # variety of hueristics.
     try:
         citation_matches = match_citations.get_citation_matches(opinion, citations)
     except ResponseNotReady as e:
         # Threading problem in httplib, which is used in the Solr query.
         raise self.retry(exc=e, countdown=2)
 
-    # Next, consolidate duplicate matches, keeping a counter of how often each
-    # match appears (so we know how many times an opinion cites another)
+    # Consolidate duplicate matches, keeping a counter of how often each
+    # match appears (so we know how many times an opinion cites another).
     # keys = opinion
     # values = number of time that opinion is cited
     grouped_matches = Counter(citation_matches)
