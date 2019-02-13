@@ -228,7 +228,7 @@ class ShortformCitation(Citation):
         )
 
     def as_regex(self):
-        return r'%s\ %d\s+%s,\ at\ %s' % (
+        return r'%s\ %d\s+%s,?\ at\ %s' % (
             re.escape(self.antecedent_guess),
             self.volume,
             re.escape(self.reporter_found),
@@ -546,10 +546,13 @@ def extract_shortform_citation(words, reporter_index):
         # No volume, therefore not a valid citation
         return None
 
-    page = parse_page(words[reporter_index + 3])
+    page = parse_page(words[reporter_index + 2])
     if not page:
-        # No page, therefore not a valid citation
-        return None
+        # There might be a comma in the way, so try one more index
+        page = parse_page(words[reporter_index + 3])
+        if not page:
+            # No page, therefore not a valid citation
+            return None
 
     reporter = words[reporter_index]
 
@@ -730,7 +733,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
     words = reporter_tokenizer.tokenize(text)
     citations = []
 
-    for i in xrange(0, len(words)):
+    for i in xrange(1, len(words) - 1):
         citation_token = words[i]
 
         # CASE 1: Citation token is a reporter (e.g., "U. S.").
@@ -757,15 +760,21 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         # In this case, the citation is simply to the immediately previous
         # document. We resolve these citations on-the-spot.
         elif citation_token.lower() == 'ibid.':
-            citation = citations[-1]
+            try:
+                citation = citations[-1]
+            except IndexError:
+                continue
 
         # CASE 3: Citation token is an "Id." reference.
         # In this case, the citation is to the immediately previous
         # document, but at a different page number. However, since this page
         # number will not help us resolve this citation, we can just discard
         # it and simply take the previous citation, as in an Ibid. reference.
-        elif citation_token.lower() == 'id.,':
-            citation = citations[-1]
+        elif citation_token.lower() == 'id.' or citation_token.lower() == 'id.,':
+            try:
+                citation = citations[-1]
+            except IndexError:
+                continue
 
         # CASE 4: Citation token is a "supra" reference.
         # In this case, we're not sure yet what the citation's antecedent is.

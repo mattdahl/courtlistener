@@ -169,6 +169,12 @@ class CiteTest(TestCase):
                                 antecedent_guess=u'Johnson,', court='scotus',
                                 canonical_reporter=u'U.S.', lookup_index=0,
                                 reporter_found='U. S.', reporter_index=2)]),
+            # Test short form citation with no comma after reporter
+            ('asdf, 1 U. S. at 2',
+             [ShortformCitation(reporter='U.S.', page=2, volume=1,
+                                antecedent_guess='asdf,', court='scotus',
+                                canonical_reporter=u'U.S.', lookup_index=0,
+                                reporter_found='U. S.', reporter_index=2)]),
             # Test first kind of supra citation (standard kind)
             ('asdf, supra, at 2',
              [SupraCitation(antecedent_guess='asdf,', page=2, volume=None)]),
@@ -182,7 +188,7 @@ class CiteTest(TestCase):
             ('asdf, supra. foo bar',
              [SupraCitation(antecedent_guess='asdf,', page=None, volume=None)]),
             # Test complex Ibid. citation
-            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid.',
+            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid. foo.',
              [FullCitation(plaintiff='foo', defendant='bar', volume=1,
                            reporter='U.S.', page=12, year=1982,
                            extra=u'347-348', court='ca4',
@@ -353,6 +359,13 @@ class CiteTest(TestCase):
 
             # Second kind of short form citation (meaningful antecedent)
             ('asdf, 1 U. S., at 2. foobar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf, </span><span class="volume">1</span> '
+             '<span class="reporter">U.S.</span>, at <span class="page">2'
+             '</span></span><pre class="inline">. foobar</pre>'),
+
+            # Short form citation with no comma after reporter in original
+            ('asdf, 1 U. S. at 2. foobar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf, </span><span class="volume">1</span> '
              '<span class="reporter">U.S.</span>, at <span class="page">2'
