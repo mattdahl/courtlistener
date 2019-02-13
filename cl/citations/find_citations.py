@@ -272,6 +272,7 @@ class SupraCitation(Citation):
     Example 1: Adarand, supra, at 240
     Example 2: Adarand, 515 supra, at 240
     Example 3: Adarand, supra, somethingelse
+    Example 4: Adrand, supra. somethingelse
     """
 
     def __init__(self, antecedent_guess, page=None, volume=None,  **kwargs):
@@ -289,15 +290,15 @@ class SupraCitation(Citation):
 
     def as_regex(self):
         if self.volume:
-            s = r'%s\ %d\ supra,' % (
+            s = r'%s\ %d\ supra' % (
                 re.escape(self.antecedent_guess),
                 self.volume
             )
         else:
-            s = r'%s\ supra,' % re.escape(self.antecedent_guess)
+            s = r'%s\ supra' % re.escape(self.antecedent_guess)
 
         if self.page:
-            s += r' at %s' % self.page
+            s += r', at %s' % self.page
 
         return s
 
@@ -305,9 +306,9 @@ class SupraCitation(Citation):
         inner_html = u'<span class="antecedent">%s</span>' % self.antecedent_guess
         if self.volume:
             inner_html += u'<span class="volume"> %d</span>' % self.volume
-        inner_html += u'<span> supra,</span>'
+        inner_html += u'<span> supra</span>'
         if self.page:
-            inner_html += u'<span> at </span><span class="page">%s</span>' % self.page
+            inner_html += u'<span>, at </span><span class="page">%s</span>' % self.page
 
         span_class = "citation"
         if self.match_url:
@@ -570,6 +571,7 @@ def extract_supra_citation(words, supra_index):
     Supra 1: Adarand, supra, at 240
     Supra 2: Adarand, 515 supra, at 240
     Supra 3: Adarand, supra, somethingelse
+    Supra 4: Adrand, supra. somethingelse
     """
 
     volume = None
@@ -770,7 +772,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         # It could be any of the previous citations above. We won't be able to
         # resolve this reference until the previous citations are actually
         # matched to opinions.
-        elif citation_token.lower() == 'supra,':
+        elif strip_punct(citation_token.lower()) == 'supra':
             citation = extract_supra_citation(words, i)
 
         # CASE 5: The token is not a citation.

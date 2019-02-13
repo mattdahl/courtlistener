@@ -178,6 +178,9 @@ class CiteTest(TestCase):
             # Test third kind of supra citation (sans page)
             ('asdf, supra, foo bar',
              [SupraCitation(antecedent_guess='asdf,', page=None, volume=None)]),
+            # Test third kind of supra citation (with period)
+            ('asdf, supra. foo bar',
+             [SupraCitation(antecedent_guess='asdf,', page=None, volume=None)]),
             # Test complex Ibid. citation
             ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid.',
              [FullCitation(plaintiff='foo', defendant='bar', volume=1,
@@ -358,7 +361,7 @@ class CiteTest(TestCase):
             # First kind of supra citation (standard kind)
             ('asdf, supra, at 2. foobar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
-             'class="antecedent">asdf,</span><span> supra,</span><span> at '
+             'class="antecedent">asdf,</span><span> supra</span><span>, at '
              '</span><span class="page">2</span></span><pre class="inline">'
              '. foobar</pre>'),
 
@@ -366,14 +369,20 @@ class CiteTest(TestCase):
             ('asdf, 123 supra, at 2. foo bar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf,</span><span class="volume"> 123</span>'
-             '<span> supra,</span><span> at </span><span class="page">2</span>'
+             '<span> supra</span><span>, at </span><span class="page">2</span>'
              '</span><pre class="inline">. foo bar</pre>'),
 
             # Third kind of supra citation (sans page)
             ('asdf, supra, foo bar',
              '<pre class="inline"></pre><span class="citation no-link"><span '
-             'class="antecedent">asdf,</span><span> supra,</span></span><pre '
-             'class="inline"> foo bar</pre>'),
+             'class="antecedent">asdf,</span><span> supra</span></span><pre '
+             'class="inline">, foo bar</pre>'),
+
+            # Fourth kind of supra citation (with period)
+            ('asdf, supra. foo bar',
+             '<pre class="inline"></pre><span class="citation no-link"><span '
+             'class="antecedent">asdf,</span><span> supra</span></span><pre '
+             'class="inline">. foo bar</pre>'),
         ]
 
         for s, expected_html in test_pairs:
