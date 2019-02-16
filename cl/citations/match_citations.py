@@ -6,7 +6,8 @@ from datetime import date, datetime
 from django.conf import settings
 from reporters_db import REPORTERS
 
-from cl.citations.find_citations import strip_punct, SupraCitation, ShortformCitation, IdCitation
+from cl.citations.find_citations import strip_punct
+from cl.citations.models import SupraCitation, ShortformCitation, IdCitation
 from cl.lib import sunburnt
 from cl.search.models import Opinion
 

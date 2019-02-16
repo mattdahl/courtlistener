@@ -7,8 +7,9 @@ from django.test import TestCase, SimpleTestCase
 from lxml import etree
 from reporters_db import REPORTERS
 
-from cl.citations.find_citations import get_citations, is_date_in_reporter, \
-    Citation, FullCitation, ShortformCitation, SupraCitation, IdCitation
+from cl.citations.find_citations import get_citations, is_date_in_reporter
+from cl.citations.models import Citation, FullCitation, IdCitation, \
+    ShortformCitation, SupraCitation
 from cl.citations.management.commands.cl_add_parallel_citations import \
     identify_parallel_citations, make_edge_list
 from cl.citations.match_citations import match_citation, get_citation_matches
