@@ -324,6 +324,55 @@ class SupraCitation(Citation):
         )
 
 
+class IdCitation(Citation):
+    """Convenience class which represents an 'id' or 'ibid' citation, i.e., a
+    citation to the document referenced immediately prior. An 'id' citation is
+    unlike a regular citation object since it has no knowledge of its reporter,
+    volume, or page. Instead, the only helpful information that this reference
+    possesses is a record of the tokens after the 'id' token. Those tokens
+    enable us to build a regex to match this citation later.
+
+    Example 1: foo bar, id., at 240
+    Example 2: foo bar, ibid.
+    """
+
+    def __init__(self, id_token=None, after_tokens=None):
+        super(IdCitation, self).__init__(None, None, None)
+
+        self.id_token = id_token
+        self.after_tokens = after_tokens
+
+    def __repr__(self):
+        return '%s %s' % (
+            self.id_token,
+            self.after_tokens
+        )
+
+    def as_regex(self):
+        # This works by only matching 'id' tokens that are asserted to precede
+        # the "after tokens" we collected earlier (i.e., a positive lookahead).
+        # The (?:[\n\r\s]+) bit makes this match across line breaks
+        return r'%s(?:[\n\r\s]+)(?=%s)' % (
+                re.escape(self.id_token),
+                r'(?:[\n\r\s]+)'.join([re.escape(t) for t in self.after_tokens])
+        )
+
+    def as_html(self):
+        span_class = "citation"
+        if self.match_url:
+            id = u'<a href="%s">%s</a>' % (self.match_url, self.id_token)
+            data_attr = u' data-id="%s"' % self.match_id
+        else:
+            id = u'%s' % self.id_token
+            span_class += " no-link"
+            data_attr = ''
+        return u'<span class="%s"%s>%s</span> ' % (
+            span_class,
+            data_attr,
+            id
+        )
+
+
 # Adapted from nltk Penn Treebank tokenizer
 def strip_punct(text):
     # starting quotes
@@ -634,8 +683,8 @@ def disambiguate_reporters(citations):
     """
     unambiguous_citations = []
     for citation in citations:
-        # Don't try to disambiguate "supra" citations, only citations with a reporter
-        if isinstance(citation, SupraCitation):
+        # Only disambiguate citations with a reporter
+        if isinstance(citation, SupraCitation) or isinstance(citation, IdCitation):
             unambiguous_citations.append(citation)
             continue
 
@@ -756,27 +805,14 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
                     # Neither a full nor short form citation
                     continue
 
-        # CASE 2: Citation token is an "Ibid." reference.
+        # CASE 2: Citation token is an "Ibid." or "Id." reference.
         # In this case, the citation is simply to the immediately previous
-        # document. We resolve these citations on-the-spot.
-        elif citation_token.lower() == 'ibid.':
-            try:
-                citation = citations[-1]
-            except IndexError:
-                continue
+        # document.
+        elif citation_token.lower() in {'ibid.', 'id.', 'id.,'}:
+            citation = IdCitation(id_token=citation_token,
+                                  after_tokens=words[i+1:i+4])
 
-        # CASE 3: Citation token is an "Id." reference.
-        # In this case, the citation is to the immediately previous
-        # document, but at a different page number. However, since this page
-        # number will not help us resolve this citation, we can just discard
-        # it and simply take the previous citation, as in an Ibid. reference.
-        elif citation_token.lower() == 'id.' or citation_token.lower() == 'id.,':
-            try:
-                citation = citations[-1]
-            except IndexError:
-                continue
-
-        # CASE 4: Citation token is a "supra" reference.
+        # CASE 3: Citation token is a "supra" reference.
         # In this case, we're not sure yet what the citation's antecedent is.
         # It could be any of the previous citations above. We won't be able to
         # resolve this reference until the previous citations are actually
@@ -784,7 +820,7 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
         elif strip_punct(citation_token.lower()) == 'supra':
             citation = extract_supra_citation(words, i)
 
-        # CASE 5: The token is not a citation.
+        # CASE 4: The token is not a citation.
         else:
             continue
 

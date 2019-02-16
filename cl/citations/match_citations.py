@@ -6,7 +6,7 @@ from datetime import date, datetime
 from django.conf import settings
 from reporters_db import REPORTERS
 
-from cl.citations.find_citations import strip_punct, SupraCitation, ShortformCitation
+from cl.citations.find_citations import strip_punct, SupraCitation, ShortformCitation, IdCitation
 from cl.lib import sunburnt
 from cl.search.models import Opinion
 
@@ -146,6 +146,7 @@ def match_citation(citation, citing_doc=None):
 def get_citation_matches(opinion, citations):
     # A list of opinions, as matched to citations
     citation_matches = []
+    was_matched = False
 
     for i, citation in enumerate(citations):
         matched_opinion = None
@@ -193,6 +194,13 @@ def get_citation_matches(opinion, citations):
                 if len(refined_candidates) == 1:
                     matched_opinion = refined_candidates[0]  # Accept the match!
 
+        # If the citation is an id citation, just resolve it to the opinion
+        # that was matched immediately prior (so long as the previous match
+        # was successful).
+        elif isinstance(citation, IdCitation):
+            if was_matched:
+                matched_opinion = citation_matches[-1]
+
         # Otherwise, the citation is just a regular citation, so try to match
         # it directly to an opinion
         else:
@@ -219,8 +227,11 @@ def get_citation_matches(opinion, citations):
         # set the match fields on the original citation object so that they
         # can later be used for generating inline html
         if matched_opinion:
+            was_matched = True
             citation_matches.append(matched_opinion)
             citation.match_url = matched_opinion.cluster.get_absolute_url()
             citation.match_id = matched_opinion.pk
+        else:
+            was_matched = False
 
     return citation_matches
