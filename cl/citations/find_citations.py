@@ -349,7 +349,7 @@ class IdCitation(Citation):
         )
 
     def as_regex(self):
-        # This works by only matching 'id' tokens that are asserted to precede
+        # This works by only matching the Id. token that is asserted to precede
         # the "after tokens" we collected earlier (i.e., a positive lookahead).
         # The (?:[\n\r\s]+) bit makes this match across line breaks
         return r'%s(?:[\n\r\s]+)(?=%s)' % (
@@ -807,16 +807,17 @@ def get_citations(text, html=True, do_post_citation=True, do_defendant=True,
 
         # CASE 2: Citation token is an "Ibid." or "Id." reference.
         # In this case, the citation is simply to the immediately previous
-        # document.
+        # document, but for safety we won't make that resolution until the
+        # previous citation has been successfully matched to an opinion.
         elif citation_token.lower() in {'ibid.', 'id.', 'id.,'}:
             citation = IdCitation(id_token=citation_token,
                                   after_tokens=words[i+1:i+4])
 
         # CASE 3: Citation token is a "supra" reference.
         # In this case, we're not sure yet what the citation's antecedent is.
-        # It could be any of the previous citations above. We won't be able to
-        # resolve this reference until the previous citations are actually
-        # matched to opinions.
+        # It could be any of the previous citations above. Thus, like an Id.
+        # citation, we won't be able to resolve this reference until the
+        # previous citations are actually matched to opinions.
         elif strip_punct(citation_token.lower()) == 'supra':
             citation = extract_supra_citation(words, i)
 
