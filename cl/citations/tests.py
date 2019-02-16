@@ -8,7 +8,7 @@ from lxml import etree
 from reporters_db import REPORTERS
 
 from cl.citations.find_citations import get_citations, is_date_in_reporter, \
-    Citation, FullCitation, ShortformCitation, SupraCitation
+    Citation, FullCitation, ShortformCitation, SupraCitation, IdCitation
 from cl.citations.management.commands.cl_add_parallel_citations import \
     identify_parallel_citations, make_edge_list
 from cl.citations.match_citations import match_citation, get_citation_matches
@@ -187,30 +187,22 @@ class CiteTest(TestCase):
             # Test third kind of supra citation (with period)
             ('asdf, supra. foo bar',
              [SupraCitation(antecedent_guess='asdf,', page=None, volume=None)]),
-            # Test complex Ibid. citation
-            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Ibid. foo.',
-             [FullCitation(plaintiff='foo', defendant='bar', volume=1,
-                           reporter='U.S.', page=12, year=1982,
-                           extra=u'347-348', court='ca4',
-                           canonical_reporter=u'U.S.', lookup_index=0,
-                           reporter_index=4, reporter_found='U.S.'),
-              FullCitation(plaintiff='foo', defendant='bar', volume=1,
-                           reporter='U.S.', page=12, year=1982,
-                           extra=u'347-348', court='ca4',
-                           canonical_reporter=u'U.S.', lookup_index=0,
-                           reporter_index=4, reporter_found='U.S.')]),
-            # Test similarly complex Id. citation
-            ('foo v. bar 1 U.S. 12, 347-348 (4th Cir. 1982). asdf. Id., at 7.',
-             [FullCitation(plaintiff='foo', defendant='bar', volume=1,
-                           reporter='U.S.', page=12, year=1982,
-                           extra=u'347-348', court='ca4',
-                           canonical_reporter=u'U.S.', lookup_index=0,
-                           reporter_index=4, reporter_found='U.S.'),
-              FullCitation(plaintiff='foo', defendant='bar', volume=1,
-                           reporter='U.S.', page=12, year=1982,
-                           extra=u'347-348', court='ca4',
-                           canonical_reporter=u'U.S.', lookup_index=0,
-                           reporter_index=4, reporter_found='U.S.')])
+            # Test Ibid. citation
+            ('foo v. bar 1 U.S. 12. asdf. Ibid. foo bar lorem ipsum.',
+             [FullCitation(plaintiff='foo', defendant=u'bar', volume=1,
+                           reporter='U.S.', page=12, lookup_index=0,
+                           canonical_reporter=u'U.S.', reporter_index=4,
+                           reporter_found='U.S.', court='scotus'),
+              IdCitation(id_token='Ibid.',
+                         after_tokens=['foo', 'bar', 'lorem'])]),
+            # Test Id. citation
+            ('foo v. bar 1 U.S. 12, 347-348. asdf. Id., at 123. foo bar',
+             [FullCitation(plaintiff='foo', defendant=u'bar', volume=1,
+                           reporter='U.S.', page=12, lookup_index=0,
+                           canonical_reporter=u'U.S.', reporter_index=4,
+                           reporter_found='U.S.', court='scotus'),
+              IdCitation(id_token='Id.,',
+                         after_tokens=['at', '123.', 'foo'])]),
         )
         for q, a in test_pairs:
             print "Testing citation extraction for %s..." % q,
@@ -396,6 +388,24 @@ class CiteTest(TestCase):
              '<pre class="inline"></pre><span class="citation no-link"><span '
              'class="antecedent">asdf,</span><span> supra</span></span><pre '
              'class="inline">. foo bar</pre>'),
+
+            # First kind of id. citation ("Id., at 123")
+            ('asdf, id., at 123. Lorem ipsum dolor sit amet',
+             '<pre class="inline">asdf, </pre><span class="citation no-link">'
+             'id.,</span> <pre class="inline">at 123. Lorem ipsum dolor sit '
+             'amet</pre>'),
+
+            # Second kind of id. citation ("Ibid.")
+            ('asdf, Ibid. Lorem ipsum dolor sit amet',
+             '<pre class="inline">asdf, </pre><span class="citation no-link">'
+             'Ibid.</span> <pre class="inline">Lorem ipsum dolor sit amet'
+             '</pre>'),
+
+            # Id. citation across line break
+            ('asdf." Id., at 315\n       Lorem ipsum dolor sit amet',
+             '<pre class="inline">asdf." </pre><span class="citation no-link">'
+             'Id.,</span> <pre class="inline">at 315\n       Lorem ipsum dolor'
+             ' sit amet</pre>')
         ]
 
         for s, expected_html in test_pairs:
@@ -417,7 +427,7 @@ class CiteTest(TestCase):
 class MatchingTest(IndexedSolrTestCase):
     def test_citation_resolution(self):
         """Tests whether different types of citations (i.e., full, short form,
-        and supra) resolve correctly to opinion matches.
+        supra, id) resolve correctly to opinion matches.
         """
 
         # Opinion fixture info:
@@ -526,6 +536,34 @@ class MatchingTest(IndexedSolrTestCase):
                              reporter_found='U.S.'),
                 ShortformCitation(reporter='F.3d', page=99, volume=26,
                                   antecedent_guess='somethingwrong')
+            ], [
+                Opinion.objects.get(pk=7)
+            ]),
+
+            # Test resolving an Id. citation
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                IdCitation(id_token='id.',
+                           after_tokens=['a', 'b', 'c'])
+            ], [
+                Opinion.objects.get(pk=7),
+                Opinion.objects.get(pk=7)
+            ]),
+
+            # Test resolving an Id. citation when the previous citation match
+            # failed. We expect the Id. citation to also not be matched.
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                ShortformCitation(reporter='F.3d', page=99, volume=26,
+                                  antecedent_guess='somethingwrong'),
+                IdCitation(id_token='id.',
+                           after_tokens=['a', 'b', 'c'])
             ], [
                 Opinion.objects.get(pk=7)
             ])
