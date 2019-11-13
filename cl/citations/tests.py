@@ -9,7 +9,7 @@ from reporters_db import REPORTERS
 
 from cl.citations.find_citations import get_citations, is_date_in_reporter
 from cl.citations.models import Citation, FullCitation, IdCitation, \
-    ShortformCitation, SupraCitation
+    ShortformCitation, SupraCitation, NonopinionCitation
 from cl.citations.management.commands.cl_add_parallel_citations import \
     identify_parallel_citations, make_edge_list
 from cl.citations.match_citations import match_citation, get_citation_matches
@@ -204,6 +204,9 @@ class CiteTest(TestCase):
                            reporter_found='U.S.', court='scotus'),
               IdCitation(id_token='Id.,',
                          after_tokens=['at', '123.', 'foo'])]),
+            # Test non-opinion citation
+            (u'lorem ipsum see §99 of the U.S. code.',
+             [NonopinionCitation(match_token=u'§99')]),
         )
         for q, a in test_pairs:
             print "Testing citation extraction for %s..." % q,
@@ -608,6 +611,20 @@ class MatchingTest(IndexedSolrTestCase):
                              canonical_reporter=u'U.S.', lookup_index=0,
                              court='scotus', reporter_index=1,
                              reporter_found='U.S.'),
+                IdCitation(id_token='id.', after_tokens=['a', 'b', 'c'])
+            ], [
+                Opinion.objects.get(pk=7)
+            ]),
+
+            # Test resolving an Id. citation when the previous citation is to a
+            # non-opinion document. Since we can't match those documents (yet),
+            # we expect the Id. citation to also not be matched.
+            ([
+                FullCitation(volume=1, reporter='U.S.', page=1,
+                             canonical_reporter=u'U.S.', lookup_index=0,
+                             court='scotus', reporter_index=1,
+                             reporter_found='U.S.'),
+                NonopinionCitation(match_token=u'§'),
                 IdCitation(id_token='id.', after_tokens=['a', 'b', 'c'])
             ], [
                 Opinion.objects.get(pk=7)
