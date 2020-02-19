@@ -36,7 +36,7 @@
             <ul>
                 {% for authority in authorities_with_data %}
                     <li>
-                        {{ authority.citing_cluster_references }} reference{{ authority.citing_cluster_references|pluralize }} to
+                        {{ authority.citation_depth }} reference{{ authority.citation_depth|pluralize }} to
                         <a href="{{ authority.get_absolute_url }}?{{ request.META.QUERY_STRING }}">
                             {{ authority.caption|safe|v_wrapper }}
                         </a>

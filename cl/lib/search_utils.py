@@ -852,7 +852,7 @@ def build_court_count_query(group=False):
     return params
 
 
-def check_for_cited_cluster_and_append_depth_data(search_data, search_results):
+def add_depth_counts(search_data, search_results):
     """If the search data contains a single "cites" term (e.g., "cites:(123)"),
     calculate and append the citation depth information between each Solr
     result and the cited OpinionCluster. We only do this for *single* "cites"
@@ -873,9 +873,7 @@ def check_for_cited_cluster_and_append_depth_data(search_data, search_results):
             return None
         else:
             for result in search_results.object_list:
-                result[
-                    "citing_cluster_references"
-                ] = get_citation_depth_between_clusters(
+                result["citation_depth"] = get_citation_depth_between_clusters(
                     citing_cluster_pk=result["id"],
                     cited_cluster_pk=cited_cluster.pk,
                 )
